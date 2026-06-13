@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - QUEUE_PROVIDER=inproc
+      - LLM_PROVIDER=${LLM_PROVIDER:-none}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
+      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SECUREPR_INGEST_SECRET=${SECUREPR_INGEST_SECRET}
+      - RAG_ENABLED=${RAG_ENABLED:-false}
+    volumes:
+      - ./backend:/app
+      - rag-data:/app/data
+    depends_on:
+      - postgres
+    networks:
+      - securepr-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../deployment/docker/Dockerfile.frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    networks:
+      - securepr-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=securepr
+      - POSTGRES_USER=securepr
+      - POSTGRES_PASSWORD=securepr_dev_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - securepr-network
+
+volumes:
+  rag-data:
+  postgres-data:
+
+networks:
+  securepr-network:
+    driver: bridge
