@@ -47,7 +47,7 @@ export default function HealthPage() {
     <div className="grid two">
       <section className="card">
         <h2 className="h1">Backend Health</h2>
-        <p className="p">Checks the FastAPI endpoint <code>/health</code>.</p>
+        <p className="p">Checks the backend endpoint <code>/health</code>.</p>
         <div className="row" style={{ gap: '0.5rem' }}>
           <button className="btn" onClick={ping} disabled={loading}>
             {loading ? 'Checking...' : 'Check Health'}

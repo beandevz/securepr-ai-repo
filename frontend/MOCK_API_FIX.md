@@ -82,7 +82,7 @@ npm run dev
 VITE_USE_MOCK_API=false
 
 # Start backend first
-cd backend && uvicorn app.main:app --reload
+cd backend && npm run dev
 
 # Start frontend
 npm run dev

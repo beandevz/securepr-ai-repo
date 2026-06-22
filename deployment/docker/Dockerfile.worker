@@ -1,25 +1,27 @@
-# Worker Dockerfile
-FROM python:3.11-slim
+# Worker Dockerfile (Node.js)
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
 
-# Copy backend requirements
-COPY backend/requirements.txt .
+# Copy package files
+COPY backend/package*.json ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies
+RUN npm ci --only=production
 
-# Copy backend code
-COPY backend/app ./app
+# Copy backend source
+COPY backend/src ./src
+COPY backend/tsconfig.json ./
+
+# Build TypeScript
+RUN npm run build
 
 # Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN adduser -D -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Run worker
-CMD ["python", "-m", "app.workers.servicebus_worker"]
+# Run worker (same entry point — queue consumer is built-in)
+CMD ["node", "dist/main.js"]

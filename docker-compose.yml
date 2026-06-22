@@ -20,8 +20,6 @@ services:
     volumes:
       - ./backend:/app
       - rag-data:/app/data
-    depends_on:
-      - postgres
     networks:
       - securepr-network
 
@@ -36,22 +34,8 @@ services:
     networks:
       - securepr-network
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=securepr
-      - POSTGRES_USER=securepr
-      - POSTGRES_PASSWORD=securepr_dev_password
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    networks:
-      - securepr-network
-
 volumes:
   rag-data:
-  postgres-data:
 
 networks:
   securepr-network:

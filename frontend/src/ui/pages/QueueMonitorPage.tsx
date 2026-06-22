@@ -26,15 +26,16 @@ export default function QueueMonitorPage() {
       }
 
       const res = await fetch(`${apiBaseUrl}/jobs`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
       const data = await res.json();
       setJobs(data || []);
       setError('');
     } catch (e: any) {
       console.error(e);
-      setError('Failed to load jobs (using mock data)');
-
-      // ✅ fallback mock data (so UI always works)
-      setJobs(MOCK_JOBS);
+      setError(`Failed to load jobs: ${e?.message || e}`);
+      // Don't replace real data with mock — keep whatever we had
     } finally {
       setLoading(false);
     }

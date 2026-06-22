@@ -8,12 +8,12 @@ A lightweight developer UI for SecurePR backend.
 - Browser-side HMAC SHA-256 signature generator
 
 ## Requirements
-- Node.js 18+ and npm
+- Node.js 20+ and npm
 
-## Setup (PowerShell)
+## Setup
 1) Go to the frontend folder:
 
-   cd securepr-frontend
+   cd frontend
 
 2) Install dependencies:
 
@@ -21,7 +21,7 @@ A lightweight developer UI for SecurePR backend.
 
 3) Create .env from template:
 
-   Copy-Item .env.example .env
+   cp .env.example .env
 
 4) Start dev server:
 
@@ -36,28 +36,25 @@ Recommended: use proxy mode:
 
 Then requests to /api/* are proxied to backend.
 
-Test flow (end-to-end)
-Step 1
-Start backend:
-python -m uvicorn app.main:app --reload
+## Test flow (end-to-end)
 
+**Step 1** — Start backend:
+```bash
+cd backend && npm run dev
+```
 
-Step 2
-Start frontend:
+**Step 2** — Start frontend:
+```bash
 npm run dev
+```
 
+**Step 3** — Open: http://localhost:5173/rag
 
-Step 3
-Open:
-http://localhost:5173/rag
-
-
-Step 4 — Paste content:
-Example:
+**Step 4** — Paste content:
+```
 Always use parameterized queries to avoid SQL Injection.
 Never trust user input.
 Validate and sanitize all inputs.
+```
 
-
-Step 5 — Click "Ingest"
-Expected:
+**Step 5** — Click "Ingest"

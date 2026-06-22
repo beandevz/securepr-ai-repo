@@ -1,7 +1,7 @@
 # SecurePR AI - Shift Left Security. Detect Early. Ship Secure.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Node.js 20+](https://img.shields.io/badge/node.js-20+-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 
 AI-powered pull request security review system that detects vulnerabilities, insecure coding patterns, and misconfigurations **before code is merged**.
@@ -36,10 +36,10 @@ GitHub PR → Webhook → API → Queue → Security Analysis → LLM Review →
 ```
 
 **Components**:
-- **Backend**: FastAPI (Python) - Webhook ingestion, analysis pipeline, LLM orchestration
+- **Backend**: Express.js + TypeScript (Node.js) - Webhook ingestion, analysis pipeline, LLM orchestration
 - **Frontend**: React + TypeScript - Dashboard for monitoring and management
 - **LLM**: Azure OpenAI / OpenAI GPT-4 - Contextual security analysis
-- **Vector DB**: ChromaDB - RAG knowledge base for security patterns
+- **RAG Store**: SQLite (better-sqlite3) - RAG knowledge base for security patterns
 - **Queue**: In-process or Azure Service Bus - Job processing
 - **VCS**: GitHub integration (GitLab/Azure DevOps ready via adapter pattern)
 
@@ -47,8 +47,8 @@ GitHub PR → Webhook → API → Queue → Security Analysis → LLM Review →
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
+- Node.js 20+
+- npm 10+
 - Azure OpenAI API key (or OpenAI key)
 - GitHub Personal Access Token
 
@@ -63,9 +63,7 @@ cd securepr-ai-repo
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+npm install
 
 # Configure environment
 cp .env.example .env
@@ -77,7 +75,6 @@ cp .env.example .env
 ```bash
 cd frontend
 npm install
-npm run dev
 ```
 
 ### 4. Run Application
@@ -85,7 +82,7 @@ npm run dev
 **Backend**:
 ```bash
 cd backend
-uvicorn app.main:app --reload
+npm run dev
 ```
 
 **Frontend**:
@@ -131,13 +128,6 @@ See [docs/DEPLOYMENT_AZURE.md](docs/DEPLOYMENT_AZURE.md) for:
 - Azure OpenAI configuration
 - CI/CD with GitHub Actions
 
-**Quick Deploy**:
-```bash
-cd deployment/azure
-terraform init
-terraform apply
-```
-
 ### AWS Deployment
 
 See [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md) for:
@@ -145,13 +135,6 @@ See [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md) for:
 - SQS integration
 - Bedrock/OpenAI configuration
 - CI/CD with GitHub Actions
-
-**Quick Deploy**:
-```bash
-cd deployment/aws
-terraform init
-terraform apply
-```
 
 ### Docker Deployment
 
@@ -184,8 +167,8 @@ docker-compose down
 
 3. **Make Changes & Test**:
    ```bash
-   # Backend tests
-   cd backend && pytest
+   # Backend type check
+   cd backend && npm run typecheck
 
    # Frontend tests
    cd frontend && npm test
@@ -203,14 +186,6 @@ docker-compose down
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
-### Using AI Assistants (Claude/Copilot)
-
-See [docs/AI_IMPLEMENTATION_GUIDE.md](docs/AI_IMPLEMENTATION_GUIDE.md) for:
-- Task breakdown for AI pair programming
-- Prompt templates for Claude Code
-- GitHub Copilot integration
-- Best practices for AI-assisted development
-
 ## 📚 Documentation
 
 - [Architecture Overview](docs/ARCHITECTURE.md)
@@ -226,17 +201,16 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 ### Development Setup
 
 ```bash
-# Install development dependencies
-cd backend && pip install -r requirements-dev.txt
+# Install dependencies
+cd backend && npm install
 cd frontend && npm install
 
-# Run tests
-pytest                    # Backend
-npm test                  # Frontend
+# Run in development
+cd backend && npm run dev       # Backend (port 8000)
+cd frontend && npm run dev      # Frontend (port 5173)
 
-# Code formatting
-black backend/app         # Python
-npm run format           # Frontend
+# Type checking
+cd backend && npm run typecheck
 ```
 
 ## 📄 License

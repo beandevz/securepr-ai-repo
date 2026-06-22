@@ -1,1 +1,1 @@
-Put curated security docs here (.md/.txt) then run: python -m app.rag.ingest_kb
+Put curated security docs here (.md/.txt) then run the KB ingestion script.

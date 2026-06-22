@@ -71,15 +71,16 @@ export default function ResultViewerPage() {
     }
 
     fetch(`${apiBaseUrl}/jobs/${jobId}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         setResult(data.result);
         setPatch(data.patch);
       })
-      .catch(() => {
-        // Fallback to mock data on error
-        setResult(MOCK_RESULT);
-        setPatch('');
+      .catch((e) => {
+        setError(`Failed to load job: ${e?.message || e}`);
       });
   }, [jobId, useMockApi]);
 
