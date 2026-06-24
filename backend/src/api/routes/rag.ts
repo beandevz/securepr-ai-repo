@@ -10,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Lazy-load embedTexts to avoid crashing at import time if Azure isn't configured
 async function getEmbedTexts() {
-  const { embedTexts } = await import('../../integrations/ai/azure-openai-client.js');
+  const { embedTexts } = await import('../../integrations/ai/openai-client.js');
   return embedTexts;
 }
 

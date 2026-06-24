@@ -15,17 +15,15 @@ export interface Settings {
   llmProvider: string;
   llmTemperature: number;
   maxLlmChunks: number;
-  azureOpenaiEndpoint: string | undefined;
-  azureOpenaiKey: string | undefined;
-  azureOpenaiDeployment: string | undefined;
-  azureOpenaiApiVersion: string;
+  openaiApiKey: string | undefined;
+  openaiModel: string | undefined;
 
   ragEnabled: boolean;
   ragDbPath: string;
   ragTopK: number;
   ragChunkSizeChars: number;
   ragChunkOverlapChars: number;
-  azureOpenaiEmbeddingDeployment: string | undefined;
+  openaiEmbeddingModel: string | undefined;
 
   maxInlineComments: number;
 
@@ -51,17 +49,15 @@ function loadSettings(): Settings {
     llmProvider: env.LLM_PROVIDER || 'none',
     llmTemperature: parseFloat(env.LLM_TEMPERATURE || '0'),
     maxLlmChunks: parseInt(env.MAX_LLM_CHUNKS || '5', 10),
-    azureOpenaiEndpoint: env.AZURE_OPENAI_ENDPOINT || undefined,
-    azureOpenaiKey: env.AZURE_OPENAI_KEY || undefined,
-    azureOpenaiDeployment: env.AZURE_OPENAI_DEPLOYMENT || undefined,
-    azureOpenaiApiVersion: env.AZURE_OPENAI_API_VERSION || '2024-10-21',
+    openaiApiKey: env.OPENAI_API_KEY || undefined,
+    openaiModel: env.OPENAI_MODEL || undefined,
 
     ragEnabled: (env.RAG_ENABLED || 'false').toLowerCase() === 'true',
     ragDbPath: env.RAG_DB_PATH || 'rag.db',
     ragTopK: parseInt(env.RAG_TOP_K || '4', 10),
     ragChunkSizeChars: parseInt(env.RAG_CHUNK_SIZE_CHARS || '1200', 10),
     ragChunkOverlapChars: parseInt(env.RAG_CHUNK_OVERLAP_CHARS || '200', 10),
-    azureOpenaiEmbeddingDeployment: env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT || undefined,
+    openaiEmbeddingModel: env.OPENAI_EMBEDDING_MODEL || undefined,
 
     maxInlineComments: parseInt(env.MAX_INLINE_COMMENTS || '12', 10),
 

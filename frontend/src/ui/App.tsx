@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { NavLink, Route, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';

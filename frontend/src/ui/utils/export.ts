@@ -453,18 +453,3 @@ export async function copyForJira(result: ScanResult) {
   }
 }
 
-/**
- * Export all findings to a ZIP file (multiple formats)
- */
-export async function exportAsZip(result: ScanResult) {
-  // Note: Requires JSZip library
-  // import JSZip from 'jszip';
-
-  // const zip = new JSZip();
-  // zip.file(`${generateFilename(result, 'json')}`, JSON.stringify(result, null, 2));
-  // zip.file(`${generateFilename(result, 'md')}`, generateMarkdown(result));
-  // const blob = await zip.generateAsync({ type: 'blob' });
-  // downloadFile(blob, generateFilename(result, 'zip'));
-
-  console.warn('ZIP export requires JSZip library');
-}

@@ -1,19 +1,17 @@
 import { settings } from '../../core/settings.js';
 import crypto from 'crypto';
 
-function isAzureConfigured(): boolean {
-  return !!(settings.azureOpenaiEndpoint && settings.azureOpenaiKey);
+function isOpenAIConfigured(): boolean {
+  return !!settings.openaiApiKey;
 }
 
 async function getClient() {
-  const { AzureOpenAI } = await import('openai');
-  if (!settings.azureOpenaiEndpoint || !settings.azureOpenaiKey) {
-    throw new Error('Azure OpenAI endpoint/key not configured');
+  const { OpenAI } = await import('openai');
+  if (!settings.openaiApiKey) {
+    throw new Error('OpenAI API key not configured');
   }
-  return new AzureOpenAI({
-    endpoint: settings.azureOpenaiEndpoint,
-    apiKey: settings.azureOpenaiKey,
-    apiVersion: settings.azureOpenaiApiVersion,
+  return new OpenAI({
+    apiKey: settings.openaiApiKey,
   });
 }
 
@@ -26,11 +24,11 @@ export async function chatCompletion(
   userPrompt: string
 ): Promise<string> {
   const client = await getClient();
-  if (!settings.azureOpenaiDeployment) {
-    throw new Error('AZURE_OPENAI_DEPLOYMENT not set');
+  if (!settings.openaiModel) {
+    throw new Error('OPENAI_MODEL not set');
   }
   const resp = await client.chat.completions.create({
-    model: settings.azureOpenaiDeployment,
+    model: settings.openaiModel,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
@@ -48,11 +46,11 @@ export async function chatCompletionJson(
   userPrompt: string
 ): Promise<Record<string, unknown>> {
   const client = await getClient();
-  if (!settings.azureOpenaiDeployment) {
-    throw new Error('AZURE_OPENAI_DEPLOYMENT not set');
+  if (!settings.openaiModel) {
+    throw new Error('OPENAI_MODEL not set');
   }
   const resp = await client.chat.completions.create({
-    model: settings.azureOpenaiDeployment,
+    model: settings.openaiModel,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
@@ -69,7 +67,7 @@ export async function chatCompletionJson(
 /**
  * Generate a deterministic local embedding from text using SHA-256.
  * Produces a 256-dimensional unit vector. Not semantically meaningful,
- * but allows the full RAG pipeline to run without Azure OpenAI.
+ * but allows the full RAG pipeline to run without OpenAI.
  */
 function localEmbed(text: string): number[] {
   const hash = crypto.createHash('sha256').update(text).digest();
@@ -90,20 +88,20 @@ function localEmbed(text: string): number[] {
 
 /**
  * Generate embeddings for texts.
- * Falls back to a local hash-based embedding when Azure OpenAI is not configured.
+ * Falls back to a local hash-based embedding when OpenAI is not configured.
  */
 export async function embedTexts(texts: string[]): Promise<number[][]> {
-  if (!isAzureConfigured()) {
-    console.log(`[RAG] Using local hash embeddings (Azure OpenAI not configured) for ${texts.length} text(s)`);
+  if (!isOpenAIConfigured()) {
+    console.log(`[RAG] Using local hash embeddings (OpenAI not configured) for ${texts.length} text(s)`);
     return texts.map(t => localEmbed(t));
   }
 
   const client = await getClient();
-  if (!settings.azureOpenaiEmbeddingDeployment) {
-    throw new Error('AZURE_OPENAI_EMBEDDING_DEPLOYMENT not set');
+  if (!settings.openaiEmbeddingModel) {
+    throw new Error('OPENAI_EMBEDDING_MODEL not set');
   }
   const r = await client.embeddings.create({
-    model: settings.azureOpenaiEmbeddingDeployment,
+    model: settings.openaiEmbeddingModel,
     input: texts,
   });
   return r.data.map(d => d.embedding);

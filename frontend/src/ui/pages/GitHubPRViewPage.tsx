@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { theme } from '../theme';
+import { loadSettings } from '../lib/storage';
 
 interface DiffLine {
   type: 'context' | 'add' | 'del';
@@ -24,70 +25,95 @@ export const GitHubPRViewPage: React.FC = () => {
   const navigate = useNavigate();
   const [prData, setPrData] = useState<any>(null);
 
-  useEffect(() => {
-    // Mock GitHub PR view data
-    setPrData({
-      repo: 'myorg/api-service',
-      prNumber: 456,
-      title: 'Add user login endpoint',
-      author: 'jsmith',
-      openedAt: '5 minutes ago',
-      filesChanged: 3,
-      additions: 47,
-      deletions: 12,
-      checkStatus: {
-        name: 'SecurePR AI',
-        status: 'failure',
-        criticalCount: 3,
-        message: 'Merging is blocked until all CRITICAL issues are resolved. Click findings below for fix instructions.',
-      },
-      diffFiles: [
-        {
-          filename: 'app/routes/login.py',
-          additions: 18,
-          deletions: 4,
-          lines: [
-            { type: 'context', oldLineNum: 40, newLineNum: 40, content: '...' },
-            { type: 'context', oldLineNum: 41, newLineNum: 41, content: 'from flask import request, jsonify' },
-            { type: 'context', oldLineNum: 42, newLineNum: 42, content: 'from app.db import get_db_connection' },
-            { type: 'context', oldLineNum: 43, newLineNum: 43, content: '' },
-            { type: 'context', oldLineNum: 44, newLineNum: 44, content: 'def get_user(user_id):' },
-            {
-              type: 'del',
-              oldLineNum: 45,
-              content: '    query = f"SELECT * FROM users WHERE id=\'{user_id}\'"',
-              hasComment: true,
-              commentText: 'This query builds SQL by inserting user_id directly — an attacker can craft input to dump your entire database or bypass authentication.',
-              commentSeverity: 'critical',
-            },
-            { type: 'del', oldLineNum: 46, content: '    return conn.execute(query).fetchone()' },
-            { type: 'add', newLineNum: 45, content: '    query = "SELECT * FROM users WHERE id = %s"' },
-            { type: 'add', newLineNum: 46, content: '    return conn.execute(query, (user_id,)).fetchone()' },
-          ],
-        },
-        {
-          filename: 'app/config.py',
-          additions: 3,
-          deletions: 1,
-          lines: [
-            { type: 'context', oldLineNum: 10, newLineNum: 10, content: 'import os' },
-            {
-              type: 'del',
-              oldLineNum: 11,
-              content: 'SECRET_KEY = "sup3r_s3cr3t_k3y_d0_n0t_sh4r3"',
-              hasComment: true,
-              commentText: 'This key is now permanently in your git history. Anyone with repo access can forge auth tokens.',
-              commentSeverity: 'critical',
-            },
-            { type: 'add', newLineNum: 11, content: 'SECRET_KEY = os.environ.get("SECRET_KEY")' },
-          ],
-        },
-      ],
-    });
-  }, [jobId]);
+  const { apiBaseUrl } = loadSettings();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!prData) {
+  useEffect(() => {
+    if (!jobId) return;
+
+    async function fetchJob() {
+      try {
+        const res = await fetch(`${apiBaseUrl}/jobs/${jobId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const job = await res.json();
+
+        const findings = job.result?.findings || [];
+        
+        // Generate pseudo-diffs based on findings
+        const diffFiles: DiffFile[] = findings.map((f: any) => {
+          const lines: DiffLine[] = [];
+          if (f.vulnerable_code) {
+             const vlines = f.vulnerable_code.split('\n');
+             vlines.forEach((l: string, i: number) => {
+               const oldL = (f.line_start || 1) + i;
+               lines.push({
+                 type: 'del',
+                 oldLineNum: oldL,
+                 content: l,
+                 hasComment: i === 0,
+                 commentText: f.risk || f.description,
+                 commentSeverity: f.severity,
+               });
+             });
+          }
+          if (f.safe_fix) {
+             const slines = f.safe_fix.split('\n');
+             slines.forEach((l: string, i: number) => {
+                lines.push({
+                  type: 'add',
+                  newLineNum: (f.line_start || 1) + i,
+                  content: l,
+                });
+             });
+          }
+          return {
+            filename: f.file_path,
+            additions: f.safe_fix ? f.safe_fix.split('\n').length : 0,
+            deletions: f.vulnerable_code ? f.vulnerable_code.split('\n').length : 0,
+            lines,
+          };
+        });
+
+        const criticalCount = findings.filter((f: any) => f.severity === 'critical').length;
+        const totalAdditions = diffFiles.reduce((acc, f) => acc + f.additions, 0);
+        const totalDeletions = diffFiles.reduce((acc, f) => acc + f.deletions, 0);
+
+        setPrData({
+          repo: job.repo || 'owner/repo',
+          prNumber: job.pr_number || 0,
+          title: `PR #${job.pr_number || 0}`,
+          author: job.owner || 'author',
+          openedAt: new Date(job.created_at).toLocaleDateString(),
+          filesChanged: diffFiles.length,
+          additions: totalAdditions,
+          deletions: totalDeletions,
+          checkStatus: {
+            name: 'SecurePR AI',
+            status: job.result?.should_fail ? 'failure' : 'success',
+            criticalCount: criticalCount,
+            message: job.result?.should_fail ? 'Merging is blocked until all CRITICAL issues are resolved.' : 'All checks passed.',
+          },
+          diffFiles,
+        });
+
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || String(err));
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchJob();
+  }, [jobId, apiBaseUrl]);
+
+  if (loading) {
     return <div style={{ padding: theme.spacing['2xl'], color: theme.colors.text }}>Loading...</div>;
+  }
+
+  if (error || !prData) {
+    return <div style={{ padding: theme.spacing['2xl'], color: theme.colors.red2 }}>Failed to load: {error}</div>;
   }
 
   const getLineStyle = (line: DiffLine) => {

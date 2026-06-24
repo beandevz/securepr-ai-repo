@@ -19,7 +19,7 @@ export class LlmAnalyzer implements SecurityAnalyzer {
     }
 
     try {
-      const { chatCompletionJson } = await import('../../integrations/ai/azure-openai-client.js');
+      const { chatCompletionJson } = await import('../../integrations/ai/openai-client.js');
       const prompt = formatChunkPrompt(this.ragContext, content);
       const data = await chatCompletionJson(SYSTEM_PROMPT, prompt);
 

@@ -15,26 +15,7 @@ export const ConnectRepoPage: React.FC = () => {
   const [githubToken, setGithubToken] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connectedRepos, setConnectedRepos] = useState<ConnectedRepo[]>([
-    {
-      id: '1',
-      owner: 'myorg',
-      name: 'api-service',
-      url: 'https://github.com/myorg/api-service',
-      webhookConfigured: true,
-      lastSync: '2 minutes ago',
-      status: 'active',
-    },
-    {
-      id: '2',
-      owner: 'myorg',
-      name: 'frontend-app',
-      url: 'https://github.com/myorg/frontend-app',
-      webhookConfigured: true,
-      lastSync: '5 minutes ago',
-      status: 'active',
-    },
-  ]);
+  const [connectedRepos, setConnectedRepos] = useState<ConnectedRepo[]>([]);
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -9,7 +9,7 @@ export class RagService {
       return '';
     }
 
-    const { embedTexts } = await import('../integrations/ai/azure-openai-client.js');
+    const { embedTexts } = await import('../integrations/ai/openai-client.js');
     const { search } = await import('../rag/store.js');
 
     const [queryEmb] = await embedTexts([queryText]);
