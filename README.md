@@ -228,6 +228,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
 - 📧 Email: hoang.lephanminh@vn.bosch.com | trong.lecongnguyen@vn.bosch.com | huong.nguyenthi@vn.bosch.com
 - 💬 Slack: #securepr-ai
 - 🐛 Issues: [GitHub Issues](https://github.com/YOUR_ORG/securepr-ai-repo/issues)
+- https://zvjl3rvl-5173.asse.devtunnels.ms
 
 ---
 
