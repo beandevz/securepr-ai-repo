@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 /**
  * Test fixture for SecurePR AI: a "SQL builder" style class mixing safe and
- * unsafe query construction, to check the scanner distinguishes them correctly.
+ * unsafe query construction, to check the scanner distinguishes them correctly. 
  */
 public class ReportSqlBuilder {
 
