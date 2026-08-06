@@ -28,24 +28,34 @@ export class LlmAnalyzer implements SecurityAnalyzer {
       const rawFindings = (data.findings as Record<string, unknown>[]) || [];
 
       for (const item of rawFindings) {
-        try {
-          const finding: Finding = {
-            title: item.title as string,
-            severity: item.severity as Finding['severity'],
-            owasp_top10_2025: item.owasp_top10_2025 as Finding['owasp_top10_2025'],
-            confidence: item.confidence as Finding['confidence'],
-            file_path: filePath, // Ensure file path is set
-            location: item.location as Finding['location'],
-            evidence: item.evidence as Finding['evidence'],
-            risk: item.risk as string,
-            recommendation: item.recommendation as string,
-            safe_fix_example: (item.safe_fix_example as string) || '',
-            references: (item.references as string[]) || [],
-          };
-          findings.push(finding);
-        } catch {
+        const location = item.location as Partial<Finding['location']> | undefined;
+        const startLine = Number(location?.start_line);
+        if (
+          typeof item.title !== 'string' || !item.title ||
+          typeof item.severity !== 'string' ||
+          !location || !Number.isFinite(startLine)
+        ) {
+          console.warn('[LlmAnalyzer] Skipping malformed finding from LLM response:', item);
           continue;
         }
+
+        const finding: Finding = {
+          title: item.title as string,
+          severity: item.severity as Finding['severity'],
+          owasp_top10_2025: item.owasp_top10_2025 as Finding['owasp_top10_2025'],
+          confidence: (item.confidence as Finding['confidence']) || 'MEDIUM',
+          file_path: filePath, // Ensure file path is set
+          location: {
+            start_line: startLine,
+            end_line: Number.isFinite(Number(location.end_line)) ? Number(location.end_line) : startLine,
+          },
+          evidence: Array.isArray(item.evidence) ? (item.evidence as Finding['evidence']) : [],
+          risk: (item.risk as string) || '',
+          recommendation: (item.recommendation as string) || '',
+          safe_fix_example: (item.safe_fix_example as string) || '',
+          references: (item.references as string[]) || [],
+        };
+        findings.push(finding);
       }
 
       return findings;
