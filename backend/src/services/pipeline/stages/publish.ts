@@ -16,7 +16,7 @@ export class PublishStage implements PipelineStage {
       comments.push({
         path: finding.file_path,
         body: formatInlineComment(finding),
-        line: Math.max(finding.location.start_line, 1),
+        line: Math.max(finding.location?.start_line ?? 1, 1),
         side: 'RIGHT',
       });
     }
@@ -29,7 +29,8 @@ export class PublishStage implements PipelineStage {
       settings.mergeGateMinSeverity
     );
 
-    // Publish review
+    // Publish review (best-effort: a publishing failure must not block the
+    // status/check-run update below, which is the actual merge-gate signal).
     const publisher = new ReviewPublisher(context.job.githubToken);
     try {
       await publisher.createReview(
@@ -42,31 +43,36 @@ export class PublishStage implements PipelineStage {
           comments,
         }
       );
-    } catch {
-      // Fallback: post as issue comment + individual review comments
-      await publisher.postIssueComment(
-        context.job.owner,
-        context.job.repo,
-        context.job.prNumber,
-        summary
-      );
-      for (const comment of comments) {
-        try {
-          await publisher.createReviewComment(
-            context.job.owner,
-            context.job.repo,
-            context.job.prNumber,
-            {
-              commitId: context.job.headSha,
-              path: comment.path as string,
-              line: comment.line as number,
-              body: comment.body as string,
-              side: (comment.side as string) || 'RIGHT',
-            }
-          );
-        } catch {
-          continue;
+    } catch (err) {
+      console.error('createReview failed, falling back to issue comment:', (err as Error).message);
+      try {
+        // Fallback: post as issue comment + individual review comments
+        await publisher.postIssueComment(
+          context.job.owner,
+          context.job.repo,
+          context.job.prNumber,
+          summary
+        );
+        for (const comment of comments) {
+          try {
+            await publisher.createReviewComment(
+              context.job.owner,
+              context.job.repo,
+              context.job.prNumber,
+              {
+                commitId: context.job.headSha,
+                path: comment.path as string,
+                line: comment.line as number,
+                body: comment.body as string,
+                side: (comment.side as string) || 'RIGHT',
+              }
+            );
+          } catch {
+            continue;
+          }
         }
+      } catch (fallbackErr) {
+        console.error('Fallback publish also failed:', (fallbackErr as Error).message);
       }
     }
 
