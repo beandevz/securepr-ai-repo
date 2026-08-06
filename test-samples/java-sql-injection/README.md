@@ -14,10 +14,14 @@ expected to come from `LlmAnalyzer` — an LLM provider must be configured
   `String.format` / `StringBuilder`).
 - `ReportSqlBuilder.java` — dynamic table/where-clause construction from input,
   plus one safe `PreparedStatement` example for false-positive checking.
+- `OrderService.java` — injection via write statements rather than SELECT:
+  a concatenated `UPDATE`, a caller-controlled `DELETE ... WHERE <clause>`,
+  and a dynamic stored-procedure `CALL`, plus one safe `PreparedStatement`
+  `DELETE` for false-positive checking.
 
 ## Usage
 Feed a diff touching these files (or the whole file) through the SecurePR AI
 pipeline (`POST /ingest/github-actions` job, or paste into the RAG/analysis
 tooling) and confirm findings are raised for each vulnerable method with
 `OWASP A03:2021 – Injection` and a `PreparedStatement` remediation, and that
-`findOrderById` is *not* flagged.
+`findOrderById` / `cancelOrderById` are *not* flagged.
