@@ -44,9 +44,9 @@ export async function askWithRag(question: string, topK?: number): Promise<AskRe
   const k = topK || settings.ragTopK;
 
   // Step 1: Embed the question and retrieve relevant chunks
-  const { embedTexts } = await import('../integrations/ai/azure-openai-client.js');
+  const { embedTexts } = await import('../integrations/ai/openai-client.js');
   const [queryEmb] = await embedTexts([question]);
-  const hits = search(queryEmb, k);
+  const hits = await search(queryEmb, k);
 
   const sources = hits.map(([source, text, score]) => ({ source, text, score }));
 
@@ -61,7 +61,7 @@ export async function askWithRag(question: string, topK?: number): Promise<AskRe
 
   // Step 2: Try to generate an LLM answer
   try {
-    const { chatCompletion } = await import('../integrations/ai/azure-openai-client.js');
+    const { chatCompletion } = await import('../integrations/ai/openai-client.js');
     const userPrompt = buildContextPrompt(question, sources);
     const answer = await chatCompletion(RAG_SYSTEM_PROMPT, userPrompt);
 

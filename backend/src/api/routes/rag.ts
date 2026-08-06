@@ -10,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Lazy-load embedTexts to avoid crashing at import time if Azure isn't configured
 async function getEmbedTexts() {
-  const { embedTexts } = await import('../../integrations/ai/azure-openai-client.js');
+  const { embedTexts } = await import('../../integrations/ai/openai-client.js');
   return embedTexts;
 }
 
@@ -67,7 +67,7 @@ router.post('/rag/ingest/text', async (req: Request, res: Response) => {
       const texts = chunks.map(c => c.text);
       const embs = await embedTexts(texts);
       const meta = chunks.map(c => ({ index: c.index, totalChunks: c.totalChunks }));
-      addChunks(srcList[i], texts, embs, meta);
+      await addChunks(srcList[i], texts, embs, meta);
       totalChunks += chunks.length;
     }
 
@@ -122,7 +122,7 @@ router.post('/rag/ingest/files', upload.array('files'), async (req: Request, res
       const texts = chunks.map(c => c.text);
       const embs = await embedTexts(texts);
       const meta = chunks.map(c => ({ index: c.index, totalChunks: c.totalChunks }));
-      addChunks(src, texts, embs, meta);
+      await addChunks(src, texts, embs, meta);
       totalChunks += chunks.length;
       fileResults.push({ filename, chunks: chunks.length });
     }
@@ -149,7 +149,7 @@ router.post('/rag/search', async (req: Request, res: Response) => {
     const topK = top_k || settings.ragTopK;
     const embedTexts = await getEmbedTexts();
     const [queryEmb] = await embedTexts([query]);
-    const hits = search(queryEmb, topK);
+    const hits = await search(queryEmb, topK);
 
     res.json({
       ok: true,
@@ -196,10 +196,10 @@ router.post('/rag/ask', async (req: Request, res: Response) => {
 
 // ─── GET /rag/sources ───────────────────────────────────────────────────────
 
-router.get('/rag/sources', (req: Request, res: Response) => {
+router.get('/rag/sources', async (req: Request, res: Response) => {
   try {
     if (!requireRag(req, res)) return;
-    const sources = listSources();
+    const sources = await listSources();
     res.json({ ok: true, sources });
   } catch (err) {
     console.error('RAG list sources error:', err);
@@ -209,11 +209,11 @@ router.get('/rag/sources', (req: Request, res: Response) => {
 
 // ─── DELETE /rag/sources/:source ────────────────────────────────────────────
 
-router.delete('/rag/sources/:source', (req: Request, res: Response) => {
+router.delete('/rag/sources/:source', async (req: Request, res: Response) => {
   try {
     if (!requireRag(req, res)) return;
     const source = decodeURIComponent(req.params.source);
-    const deleted = deleteBySource(source);
+    const deleted = await deleteBySource(source);
     res.json({ ok: true, source, deleted_chunks: deleted });
   } catch (err) {
     console.error('RAG delete source error:', err);
@@ -223,10 +223,10 @@ router.delete('/rag/sources/:source', (req: Request, res: Response) => {
 
 // ─── GET /rag/stats ─────────────────────────────────────────────────────────
 
-router.get('/rag/stats', (req: Request, res: Response) => {
+router.get('/rag/stats', async (req: Request, res: Response) => {
   try {
     if (!requireRag(req, res)) return;
-    const stats = getStats();
+    const stats = await getStats();
     res.json({ ok: true, ...stats });
   } catch (err) {
     console.error('RAG stats error:', err);

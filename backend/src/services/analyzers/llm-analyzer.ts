@@ -14,12 +14,13 @@ export class LlmAnalyzer implements SecurityAnalyzer {
   }
 
   async analyze(filePath: string, content: string): Promise<Finding[]> {
-    if (settings.llmProvider.toLowerCase() !== 'azure_openai') {
+    const provider = settings.llmProvider.toLowerCase();
+    if (provider !== 'openai' && provider !== 'azure_openai') {
       return [];
     }
 
     try {
-      const { chatCompletionJson } = await import('../../integrations/ai/azure-openai-client.js');
+      const { chatCompletionJson } = await import('../../integrations/ai/openai-client.js');
       const prompt = formatChunkPrompt(this.ragContext, content);
       const data = await chatCompletionJson(SYSTEM_PROMPT, prompt);
 

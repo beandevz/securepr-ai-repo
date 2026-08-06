@@ -9,11 +9,11 @@ export class RagService {
       return '';
     }
 
-    const { embedTexts } = await import('../integrations/ai/azure-openai-client.js');
+    const { embedTexts } = await import('../integrations/ai/openai-client.js');
     const { search } = await import('../rag/store.js');
 
     const [queryEmb] = await embedTexts([queryText]);
-    const hits = search(queryEmb, settings.ragTopK);
+    const hits = await search(queryEmb, settings.ragTopK);
 
     return hits
       .map(([s, t, sc]) => `[source=${s} score=${sc.toFixed(3)}]\n${t}`)

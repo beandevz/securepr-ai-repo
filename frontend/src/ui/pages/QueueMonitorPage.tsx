@@ -1,30 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadSettings } from '../lib/storage';
 import { Job } from '../types';
-import { mockQueueJobs } from '../utils/mockData';
-
-const MOCK_JOBS: Job[] = mockQueueJobs as any;
 
 export default function QueueMonitorPage() {
   const navigate = useNavigate();
-  const { apiBaseUrl, useMockApi } = loadSettings();
+  const { apiBaseUrl } = loadSettings();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // ✅ Fetch jobs
   async function fetchJobs() {
     setLoading(true);
     try {
-      // If mock mode enabled, skip API call
-      if (useMockApi) {
-        setJobs(MOCK_JOBS);
-        setError('');
-        return;
-      }
-
       const res = await fetch(`${apiBaseUrl}/jobs`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -35,18 +24,16 @@ export default function QueueMonitorPage() {
     } catch (e: any) {
       console.error(e);
       setError(`Failed to load jobs: ${e?.message || e}`);
-      // Don't replace real data with mock — keep whatever we had
     } finally {
       setLoading(false);
     }
   }
 
-  // ✅ Auto refresh
   useEffect(() => {
     fetchJobs();
     const interval = setInterval(fetchJobs, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [apiBaseUrl]);
 
   function statusClass(s: string) {
     if (s === 'done') return 'ok';
@@ -58,11 +45,6 @@ export default function QueueMonitorPage() {
   function openJob(jobId: string) {
     navigate(`/results/${jobId}`);
   }
-
-  const loadMock = () => {
-    setJobs(MOCK_JOBS);
-    setError('');
-  };
 
   const clear = () => {
     setJobs([]);
@@ -81,9 +63,6 @@ export default function QueueMonitorPage() {
           <button className="btn" onClick={fetchJobs} disabled={loading}>
             {loading ? 'Loading...' : 'Refresh'}
           </button>
-          <button className="btn" onClick={loadMock}>
-            Load Sample Data
-          </button>
           <button className="btn" onClick={clear}>
             Clear
           </button>
@@ -93,6 +72,9 @@ export default function QueueMonitorPage() {
         {error && <p className="p">{error}</p>}
 
         <div className="grid">
+          {jobs.length === 0 && !loading && !error && (
+            <p className="p">No jobs in queue.</p>
+          )}
           {jobs.map((job) => (
             <div
               key={job.id}

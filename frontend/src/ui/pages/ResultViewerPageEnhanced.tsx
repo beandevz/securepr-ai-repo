@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { theme, calculateScore, shouldFailGate, getSeverityConfig } from '../theme';
+import { loadSettings } from '../lib/storage';
 import { exportAsJSON, exportAsCSV, exportAsMarkdown, exportAsHTML } from '../utils/export';
 
 interface Finding {
@@ -38,67 +39,56 @@ export const ResultViewerPageEnhanced: React.FC = () => {
   const [fixingAll, setFixingAll] = useState(false);
   const [fixedFindings, setFixedFindings] = useState<Set<number>>(new Set());
 
-  useEffect(() => {
-    // Mock data for demo
-    setPrResult({
-      repo: 'api-service',
-      owner: 'myorg',
-      pr_number: 456,
-      pr_title: 'Add user login endpoint',
-      author: 'jsmith',
-      opened_at: '5 min ago',
-      scan_duration: '11.2s',
-      findings: [
-        {
-          severity: 'critical',
-          title: 'SQL Injection Vulnerability',
-          file_path: 'login.py',
-          line_start: 45,
-          description: 'The code builds a SQL query by directly inserting user input into the string. An attacker can type special characters to delete your entire database or bypass authentication.',
-          risk: 'This query builds SQL by inserting user_id directly — an attacker can craft input to dump your entire database or bypass authentication.',
-          recommendation: 'Use parameterized queries. The database driver handles escaping automatically.',
-          vulnerable_code: `query = f"SELECT * FROM users WHERE id='{user_id}'"
-return conn.execute(query).fetchone()`,
-          safe_fix: `query = "SELECT * FROM users WHERE id = %s"
-return conn.execute(query, (user_id,)).fetchone()`,
-          owasp_category: 'A03:2021 – Injection',
-          confidence: 95,
-        },
-        {
-          severity: 'critical',
-          title: 'Authentication Bypass via SQL Injection',
-          file_path: 'auth.py',
-          line_start: 78,
-          description: 'The login query is vulnerable to comment injection. By entering admin\'-- as a username, the password check is bypassed completely.',
-          risk: 'Attacker can gain admin access by bypassing password verification',
-          recommendation: 'Use parameterized queries for all database operations',
-          vulnerable_code: `query = f"SELECT * FROM users WHERE user='{user}' AND pass='{pwd}'"`,
-          safe_fix: `cursor.execute("SELECT * FROM users WHERE user=%s AND pass=%s", (user, pwd))`,
-          owasp_category: 'A07:2021 – Authentication Failures',
-          confidence: 98,
-        },
-        {
-          severity: 'critical',
-          title: 'Hardcoded Secret Key in Source',
-          file_path: 'config.py',
-          line_start: 12,
-          description: 'A secret key is written directly in the code. Anyone with access to the repository can see it and use it to forge authentication tokens.',
-          risk: 'This key is now permanently in git history. Anyone with repo access can forge auth tokens.',
-          recommendation: 'Store secrets in environment variables or a secrets manager (Azure Key Vault, AWS Secrets Manager)',
-          vulnerable_code: `SECRET_KEY = "sup3r_s3cr3t_k3y_d0_n0t_sh4r3"`,
-          safe_fix: `import os
-SECRET_KEY = os.environ.get("SECRET_KEY")  # set in .env or secrets manager`,
-          owasp_category: 'A02:2021 – Cryptographic Failures',
-          confidence: 100,
-        },
-      ],
-    });
-  }, [jobId]);
+  const { apiBaseUrl } = loadSettings();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!prResult) {
+  useEffect(() => {
+    if (!jobId) return;
+
+    async function fetchJob() {
+      try {
+        const res = await fetch(`${apiBaseUrl}/jobs/${jobId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const job = await res.json();
+
+        const start = new Date(job.created_at).getTime();
+        const end = job.updated_at ? new Date(job.updated_at).getTime() : new Date().getTime();
+        const durationSec = Math.max(0.1, (end - start) / 1000);
+
+        setPrResult({
+          repo: job.repo || 'unknown',
+          owner: job.owner || 'unknown',
+          pr_number: job.pr_number || 0,
+          pr_title: `PR #${job.pr_number || 0}`,
+          author: 'author', // Github API could provide this, but job record might not have it
+          opened_at: new Date(job.created_at).toLocaleDateString(),
+          scan_duration: `${durationSec.toFixed(1)}s`,
+          findings: job.result?.findings || [],
+        });
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || String(err));
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchJob();
+  }, [jobId, apiBaseUrl]);
+
+  if (loading) {
     return (
       <div style={{ padding: theme.spacing['2xl'], color: theme.colors.text }}>
         Loading...
+      </div>
+    );
+  }
+
+  if (error || !prResult) {
+    return (
+      <div style={{ padding: theme.spacing['2xl'], color: theme.colors.red2 }}>
+        Failed to load job: {error || 'Not found'}
       </div>
     );
   }
@@ -495,7 +485,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY")  # set in .env or secrets manager`,
       </div>
 
       {/* Findings */}
-      {filteredFindings.map((finding, idx) => {
+      {filteredFindings.map((finding) => {
         const realIndex = prResult.findings.indexOf(finding);
         const isExpanded = expandedFindings.has(realIndex);
         const isFixed = fixedFindings.has(realIndex);
