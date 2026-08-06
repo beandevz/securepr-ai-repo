@@ -13,7 +13,7 @@ export class RagService {
     const { search } = await import('../rag/store.js');
 
     const [queryEmb] = await embedTexts([queryText]);
-    const hits = search(queryEmb, settings.ragTopK);
+    const hits = await search(queryEmb, settings.ragTopK);
 
     return hits
       .map(([s, t, sc]) => `[source=${s} score=${sc.toFixed(3)}]\n${t}`)

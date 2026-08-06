@@ -14,7 +14,8 @@ export class LlmAnalyzer implements SecurityAnalyzer {
   }
 
   async analyze(filePath: string, content: string): Promise<Finding[]> {
-    if (settings.llmProvider.toLowerCase() !== 'azure_openai') {
+    const provider = settings.llmProvider.toLowerCase();
+    if (provider !== 'openai' && provider !== 'azure_openai') {
       return [];
     }
 

@@ -12,6 +12,7 @@ async function getClient() {
   }
   return new OpenAI({
     apiKey: settings.openaiApiKey,
+    ...(settings.openaiBaseUrl && { baseURL: settings.openaiBaseUrl }),
   });
 }
 
@@ -91,8 +92,8 @@ function localEmbed(text: string): number[] {
  * Falls back to a local hash-based embedding when OpenAI is not configured.
  */
 export async function embedTexts(texts: string[]): Promise<number[][]> {
-  if (!isOpenAIConfigured()) {
-    console.log(`[RAG] Using local hash embeddings (OpenAI not configured) for ${texts.length} text(s)`);
+  if (!isOpenAIConfigured() || settings.openaiBaseUrl) {
+    console.log(`[RAG] Using local hash embeddings for ${texts.length} text(s)`);
     return texts.map(t => localEmbed(t));
   }
 

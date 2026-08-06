@@ -16,6 +16,7 @@ export interface Settings {
   llmTemperature: number;
   maxLlmChunks: number;
   openaiApiKey: string | undefined;
+  openaiBaseUrl: string | undefined;
   openaiModel: string | undefined;
 
   ragEnabled: boolean;
@@ -50,6 +51,7 @@ function loadSettings(): Settings {
     llmTemperature: parseFloat(env.LLM_TEMPERATURE || '0'),
     maxLlmChunks: parseInt(env.MAX_LLM_CHUNKS || '5', 10),
     openaiApiKey: env.OPENAI_API_KEY || undefined,
+    openaiBaseUrl: env.OPENAI_BASE_URL || undefined,
     openaiModel: env.OPENAI_MODEL || undefined,
 
     ragEnabled: (env.RAG_ENABLED || 'false').toLowerCase() === 'true',
