@@ -1,23 +1,31 @@
 import { Router, Request, Response } from 'express';
 import { settings } from '../../core/settings.js';
-import { verifyHmacSha256 } from '../../core/security.js';
+import { verifyHmacSha256, decryptSecret } from '../../core/security.js';
 import { IngestService } from '../../services/ingest-service.js';
+import { getRepoByOwnerName } from '../../repos/store.js';
 import { ValidationError } from '../../exceptions.js';
 
 const router = Router();
 
 router.post('/ingest/github-actions', async (req: Request, res: Response) => {
   try {
-    // Verify webhook signature
+    // Verify webhook signature. Native GitHub webhooks sign with
+    // X-Hub-Signature-256; the custom relay path signs with X-SecurePR-Signature.
     const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
     if (!rawBody) {
       res.status(400).json({ detail: 'Missing raw body' });
       return;
     }
 
-    const signature = req.headers['x-securepr-signature'] as string | undefined;
+    const signature = (req.headers['x-hub-signature-256'] || req.headers['x-securepr-signature']) as string | undefined;
     if (!verifyHmacSha256(settings.securePrIngestSecret, rawBody, signature)) {
       res.status(401).json({ detail: 'Invalid signature' });
+      return;
+    }
+
+    // GitHub sends a "ping" event when a webhook is first created — ack it, no PR to process.
+    if (req.headers['x-github-event'] === 'ping') {
+      res.json({ ok: true, pong: true });
       return;
     }
 
@@ -36,8 +44,15 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
       throw e;
     }
 
-    // Get GitHub token
-    const token = (req.headers['x-securepr-github-token'] as string) || settings.githubToken;
+    // Get GitHub token: explicit header > stored token for this connected repo > global fallback
+    let token = req.headers['x-securepr-github-token'] as string | undefined;
+    if (!token) {
+      const connectedRepo = await getRepoByOwnerName(owner, repoName);
+      if (connectedRepo) {
+        token = decryptSecret(connectedRepo.encrypted_token);
+      }
+    }
+    token = token || settings.githubToken;
     if (!token) {
       res.status(400).json({ detail: 'Missing GitHub token' });
       return;

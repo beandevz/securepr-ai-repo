@@ -28,6 +28,10 @@ export interface Settings {
 
   maxInlineComments: number;
 
+  tokenEncryptionKey: string;
+  publicBaseUrl: string | undefined;
+  reposDbPath: string;
+
   statusReportingEnabled: boolean;
   statusReportingMode: string;
   statusCheckName: string;
@@ -62,6 +66,10 @@ function loadSettings(): Settings {
     openaiEmbeddingModel: env.OPENAI_EMBEDDING_MODEL || undefined,
 
     maxInlineComments: parseInt(env.MAX_INLINE_COMMENTS || '12', 10),
+
+    tokenEncryptionKey: env.TOKEN_ENCRYPTION_KEY || 'change_me',
+    publicBaseUrl: env.PUBLIC_BASE_URL || undefined,
+    reposDbPath: env.REPOS_DB_PATH || 'repos.db',
 
     statusReportingEnabled: (env.STATUS_REPORTING_ENABLED || 'true').toLowerCase() === 'true',
     statusReportingMode: env.STATUS_REPORTING_MODE || 'check_run',

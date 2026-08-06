@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { theme } from '../theme';
+import { loadSettings } from '../lib/storage';
+import { apiGet, apiPostJson } from '../lib/api';
 
 interface ConnectedRepo {
   id: string;
@@ -12,43 +14,57 @@ interface ConnectedRepo {
 }
 
 export const ConnectRepoPage: React.FC = () => {
+  const { apiBaseUrl } = loadSettings();
   const [githubToken, setGithubToken] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedRepos, setConnectedRepos] = useState<ConnectedRepo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    apiGet<ConnectedRepo[]>(apiBaseUrl, '/repos')
+      .then(repos => { if (mounted) setConnectedRepos(repos); })
+      .catch(err => { if (mounted) setError(err.message || String(err)); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [apiBaseUrl]);
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsConnecting(true);
+    setError('');
 
-    // Simulate API call
-    setTimeout(() => {
-      const urlParts = repoUrl.replace('https://github.com/', '').split('/');
-      const newRepo: ConnectedRepo = {
-        id: Date.now().toString(),
-        owner: urlParts[0] || 'owner',
-        name: urlParts[1] || 'repo',
-        url: repoUrl,
-        webhookConfigured: false,
-        lastSync: 'Just now',
-        status: 'active',
-      };
-      setConnectedRepos([...connectedRepos, newRepo]);
+    try {
+      const repo = await apiPostJson<ConnectedRepo>(apiBaseUrl, '/repos', { repoUrl, githubToken });
+      setConnectedRepos(prev => [repo, ...prev]);
       setRepoUrl('');
+      setGithubToken('');
+    } catch (err: any) {
+      setError(err.message || String(err));
+    } finally {
       setIsConnecting(false);
-    }, 1500);
-  };
-
-  const handleDisconnect = (id: string) => {
-    if (confirm('Are you sure you want to disconnect this repository?')) {
-      setConnectedRepos(connectedRepos.filter(repo => repo.id !== id));
     }
   };
 
-  const handleConfigureWebhook = (id: string) => {
-    setConnectedRepos(connectedRepos.map(repo =>
-      repo.id === id ? { ...repo, webhookConfigured: true } : repo
-    ));
+  const handleDisconnect = async (id: string) => {
+    if (!confirm('Are you sure you want to disconnect this repository?')) return;
+    try {
+      await fetch(`${apiBaseUrl}/repos/${id}`, { method: 'DELETE' });
+      setConnectedRepos(prev => prev.filter(repo => repo.id !== id));
+    } catch (err: any) {
+      setError(err.message || String(err));
+    }
+  };
+
+  const handleConfigureWebhook = async (id: string) => {
+    try {
+      const repo = await apiPostJson<ConnectedRepo>(apiBaseUrl, `/repos/${id}/webhook`, {});
+      setConnectedRepos(prev => prev.map(r => (r.id === id ? repo : r)));
+    } catch (err: any) {
+      setError(err.message || String(err));
+    }
   };
 
   return (
@@ -83,6 +99,21 @@ export const ConnectRepoPage: React.FC = () => {
         </p>
       </div>
 
+      {error && (
+        <div style={{
+          marginBottom: theme.spacing.lg,
+          padding: '10px 14px',
+          borderRadius: theme.radius.sm,
+          background: theme.status.fail.bg,
+          border: `1px solid ${theme.status.fail.border}`,
+          color: theme.status.fail.color,
+          fontFamily: theme.fonts.ui,
+          fontSize: '13px',
+        }}>
+          {error}
+        </div>
+      )}
+
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 400px',
@@ -101,7 +132,20 @@ export const ConnectRepoPage: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
-            {connectedRepos.length === 0 ? (
+            {loading ? (
+              <div style={{
+                background: theme.colors.surface,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.radius.lg,
+                padding: '40px',
+                textAlign: 'center',
+                fontFamily: theme.fonts.ui,
+                fontSize: '13px',
+                color: theme.colors.text2,
+              }}>
+                Loading connected repositories...
+              </div>
+            ) : connectedRepos.length === 0 ? (
               <div style={{
                 background: theme.colors.surface,
                 border: `1px solid ${theme.colors.border}`,

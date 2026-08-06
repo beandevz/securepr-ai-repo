@@ -9,6 +9,7 @@ import ingestRouter from './api/routes/ingest.js';
 import jobsRouter from './api/routes/jobs.js';
 import githubStatusRouter from './api/routes/github-status.js';
 import ragRouter from './api/routes/rag.js';
+import reposRouter from './api/routes/repos.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8000', 10);
@@ -31,6 +32,7 @@ app.use(ingestRouter);
 app.use(jobsRouter);
 app.use(githubStatusRouter);
 app.use(ragRouter);
+app.use(reposRouter);
 
 // Startup
 async function startup() {
