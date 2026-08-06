@@ -55,12 +55,6 @@ Keep each update ≤ 25 lines.
 ## 3) What SecurePR AI currently includes (keep updated)
 ### 3.1 Backend Architecture (Node.js/Express + TypeScript, SOLID + GoF patterns)
 
-**Interface Layer** (`src/interfaces/` - Dependency Inversion):
-- `llm-provider.ts` - LlmProvider interface (review, healthCheck)
-- `queue-provider.ts` - QueueProvider interface (enqueue, start, stop, isHealthy)
-- `vcs-provider.ts` - VcsProvider interface (fetchPrDiff, createReview, createCheckRun, etc.)
-- `rag-provider.ts` - RagProvider interface (retrieve, ingestDocument, searchRaw, isEnabled)
-
 **Core** (`src/core/`):
 - `settings.ts` - Settings interface + singleton getSettings() with dotenv
 - `security.ts` - HMAC-SHA256 compute + timing-safe verify (Node.js crypto)
@@ -75,6 +69,7 @@ Keep each update ≤ 25 lines.
 - `github/review-publisher.ts` - ReviewPublisher (PR reviews, comments)
 - `github/checks-publisher.ts` - ChecksPublisher (check runs, commit statuses)
 - `github/status-client.ts` - getCommitStatus, getCheckRuns
+- `github/repo-client.ts` - RepoWebhookClient (getRepo, createWebhook, deleteWebhook)
 - `ai/azure-openai-client.ts` - chatCompletionJson, embedTexts (with local hash fallback)
 
 **Analyzer Layer** (`src/services/analyzers/` - Strategy Pattern):
@@ -95,8 +90,9 @@ Keep each update ≤ 25 lines.
 **Service Layer**:
 - `ingest-service.ts` - IngestService: validateGithubPayload, createCheckRunIfEnabled, createJob, enqueueJob
 - `rag-service.ts` - RAG retrieval wrapper
+- `repo-service.ts` - connectRepo, listRepos, configureWebhook, disconnectRepo (Connect Repository feature)
 - `diff-fetcher.ts` - DiffFetcher: fetchFiles with GitHub pagination
-- `prompts.ts` - SYSTEM_PROMPT, CHUNK_PROMPT_TEMPLATE, formatChunkPrompt
+- `prompts.ts` - SYSTEM_PROMPT, CHUNK_PROMPT_TEMPLATE (explicit finding JSON schema), formatChunkPrompt
 
 **Queue Management** (`src/queue/`):
 - `models.ts` - Job interface
@@ -105,65 +101,56 @@ Keep each update ≤ 25 lines.
 - `instance.ts` - Queue singleton factory (getQueueInstance)
 
 **RAG** (`src/rag/`):
-- `store.ts` - SQLite-backed (better-sqlite3) vector store with cosine similarity
+- `store.ts` - sql.js-backed (SQLite via WASM) vector store with cosine similarity
+
+**Connected Repos** (`src/repos/`):
+- `store.ts` - sql.js-backed store for connected repos (encrypted GitHub token, webhook_id, status)
 
 **Utilities** (`src/utils/`):
 - `severity.ts` - getMaxSeverity, shouldFailGate, sortFindingsBySeverity
 - `formatters.ts` - formatInlineComment, formatSummary
 
 **API Routes** (`src/api/routes/`):
-- `ingest.ts` - POST /ingest/github-actions (HMAC verified)
+- `ingest.ts` - POST /ingest/github-actions (accepts native GitHub `X-Hub-Signature-256` or custom `X-SecurePR-Signature`; resolves per-repo token from `repos/store.ts`)
 - `health.ts` - GET /health
 - `jobs.ts` - GET /jobs, GET /jobs/:jobId, DELETE /jobs/:jobId
 - `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ingest
 - `github-status.ts` - GET /github/status/:owner/:repo/:sha
+- `repos.ts` - POST /repos (connect + auto-create webhook), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id
 
 **Entry Point**: `src/main.ts` - Express app with CORS, raw body capture for HMAC, queue startup, graceful shutdown
 
 ### 3.2 Frontend Architecture (React + TypeScript, modular)
 
-**Type Organization** (`ui/types/` - centralized, DRY):
-- `index.ts` - Central export point
-- `job.ts` - Job, JobStatus, JobResult, JobDetail
-- `api.ts` - All API request/response types
-- `finding.ts`, `result.ts`, `diff.ts` - Domain types
+**Types** (`ui/types/`): `job.ts` (Job, JobStatus, JobResult, JobDetail) — each page otherwise
+defines its own local view-model interfaces rather than sharing a central types barrel.
 
-**API Client** (`ui/lib/`):
-- `ApiClient.ts` - Class-based client (getJobs, getJob, submitWebhook, etc.)
-- `endpoints.ts` - Type-safe endpoint definitions
+**API helpers** (`ui/lib/`):
+- `api.ts` - `apiGet`/`apiPostJson` fetch helpers
+- `storage.ts` - localStorage-backed app settings (apiBaseUrl, tokens)
 
 **Utilities** (`ui/utils/` - extracted business logic):
-- `severity.ts` - severityClass, severityWeight, sortBySeverity
 - `navigation.ts` - scrollToElement, nextIndex, prevIndex
-- `diffParser.ts` - parseUnifiedPatchToRows, parseHunkHeader
-- `diffBlocks.ts` - buildBlocks, buildIssueBlocks
-- `wordDiff.ts` - diffWords (word-level highlighting)
-
-**Hooks** (`ui/hooks/` - reusable stateful logic):
-- `useFindingNavigation.ts` - Finding navigation (goToNext, goToPrevious, activeIndex)
-- `useJobFetch.ts` - Job fetching with loading/error states
-- `useApi.ts` - Generic API hook template
+- `export.ts` - exportAsJSON/CSV/Markdown/HTML for scan results
 
 **Components** (`ui/components/`):
 - `ErrorBoundary.tsx` + `ErrorFallback.tsx` - Error boundary pattern
-- `SplitDiffViewer/` (modular folder)
-- Other: Nav, Pill, Card (thin presentational components)
 
-**Pages** (`ui/pages/`):
-- `HomePage.tsx` - Health check panel
-- `WebhookSimulatorPage.tsx` - Webhook simulator
-- `QueueMonitorPage.tsx` - Queue monitor
-- `ResultViewerPage.tsx` - Result viewer
-- `ChecksViewerPage.tsx` - Check-run / commit-status viewer
+**Pages** (`ui/pages/`, routed in `App.tsx`):
+- `DashboardPage.tsx` - Stats + recent scans overview
+- `ConnectRepoPage.tsx` - Connect a GitHub repo (real backend-backed, see `/repos` routes)
+- `QueueMonitorPage.tsx` - Queue/job monitor
+- `ResultViewerPageEnhanced.tsx` - Per-job finding detail viewer
+- `GitHubPRViewPage.tsx` - PR-diff-style finding viewer
 - `RagManagerPage.tsx` - RAG ingest + search tools
 
 ### 3.3 Tech stack
 - Backend: Express.js + TypeScript (Node.js 20+)
-- AI: Azure OpenAI / OpenAI; local hash-based fallback for dev
-- DB: SQLite (better-sqlite3) for RAG vector store
+- AI: OpenAI-compatible client (`integrations/ai/openai-client.ts`); local hash-based embedding fallback for dev
+- DB: SQLite via `sql.js` (WASM) for both the RAG vector store and connected-repo store
 - Frontend: React 18 + TypeScript + Vite
-- Queue: In-process (setInterval poll) or Azure Service Bus
-- VCS: GitHub integration (GitLab/Azure DevOps ready via adapter pattern)
+- Queue: In-process (setInterval poll) or Azure Service Bus (placeholder)
+- VCS: GitHub integration (webhook create/delete, PR reviews, check runs)
 
 ---
 

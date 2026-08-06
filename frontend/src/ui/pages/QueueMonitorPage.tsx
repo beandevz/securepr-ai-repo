@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadSettings } from '../lib/storage';
-import { Job } from '../types';
+import { Job } from '../types/job';
 
 export default function QueueMonitorPage() {
   const navigate = useNavigate();
