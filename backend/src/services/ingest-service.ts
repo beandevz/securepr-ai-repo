@@ -81,7 +81,7 @@ export class IngestService {
   /**
    * Create a security review job.
    */
-  static createJob(
+  static async createJob(
     owner: string,
     repo: string,
     prNumber: number,
@@ -90,11 +90,11 @@ export class IngestService {
     payload: Record<string, unknown>,
     checkRunId: number | null,
     statusMode: string
-  ): Job {
+  ): Promise<Job> {
     const jobId = 'job_' + uuidv4().replace(/-/g, '');
 
     // Create job record for UI monitoring
-    jobStore.create({
+    await jobStore.create({
       jobId,
       owner,
       repo,

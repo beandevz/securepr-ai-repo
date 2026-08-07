@@ -92,15 +92,12 @@ function localEmbed(text: string): number[] {
  * Falls back to a local hash-based embedding when OpenAI is not configured.
  */
 export async function embedTexts(texts: string[]): Promise<number[][]> {
-  if (!isOpenAIConfigured() || settings.openaiBaseUrl) {
+  if (!isOpenAIConfigured() || !settings.openaiEmbeddingModel) {
     console.log(`[RAG] Using local hash embeddings for ${texts.length} text(s)`);
     return texts.map(t => localEmbed(t));
   }
 
   const client = await getClient();
-  if (!settings.openaiEmbeddingModel) {
-    throw new Error('OPENAI_EMBEDDING_MODEL not set');
-  }
   const r = await client.embeddings.create({
     model: settings.openaiEmbeddingModel,
     input: texts,

@@ -31,6 +31,7 @@ export interface Settings {
   tokenEncryptionKey: string;
   publicBaseUrl: string | undefined;
   reposDbPath: string;
+  jobsDbPath: string;
 
   statusReportingEnabled: boolean;
   statusReportingMode: string;
@@ -70,6 +71,7 @@ function loadSettings(): Settings {
     tokenEncryptionKey: env.TOKEN_ENCRYPTION_KEY || 'change_me',
     publicBaseUrl: env.PUBLIC_BASE_URL || undefined,
     reposDbPath: env.REPOS_DB_PATH || 'repos.db',
+    jobsDbPath: env.JOBS_DB_PATH || 'jobs.db',
 
     statusReportingEnabled: (env.STATUS_REPORTING_ENABLED || 'true').toLowerCase() === 'true',
     statusReportingMode: env.STATUS_REPORTING_MODE || 'check_run',
