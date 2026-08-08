@@ -10,4 +10,11 @@ set -e
 
 nginx
 
+# Pin the API to the internal port nginx proxies to. This is deliberately
+# forced rather than defaulted: hosts inject their own PORT (App Service
+# derives it from WEBSITES_PORT, which here is 80 - nginx's port), and
+# main.ts honours PORT, so without this the API tries to bind the port
+# nginx already holds and dies with EADDRINUSE.
+export PORT=8000
+
 exec node /app/dist/main.js
