@@ -18,17 +18,21 @@ services:
       - SECUREPR_INGEST_SECRET=${SECUREPR_INGEST_SECRET}
       - RAG_ENABLED=${RAG_ENABLED:-false}
     volumes:
-      - ./backend:/app
       - rag-data:/app/data
     networks:
       - securepr-network
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: ../deployment/docker/Dockerfile.frontend
+      context: .
+      dockerfile: deployment/docker/Dockerfile.frontend
     ports:
       - "5173:80"
+    environment:
+      # Same-origin setup: the browser calls /api on the frontend origin
+      # and nginx proxies it to the api service on this network.
+      - API_BASE_URL=/api
+      - API_UPSTREAM=http://api:8000
     depends_on:
       - api
     networks:

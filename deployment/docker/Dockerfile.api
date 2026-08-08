@@ -24,9 +24,9 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
-# Create non-root user
-RUN adduser -D -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
+# Run as the non-root user built into the node:alpine base image
+RUN chown -R node:node /app
+USER node
 
 # Expose port
 EXPOSE 8000

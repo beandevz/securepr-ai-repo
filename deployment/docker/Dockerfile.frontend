@@ -1,10 +1,18 @@
 # Frontend Dockerfile - Multi-stage build
 # Build from the repo root: docker build -f deployment/docker/Dockerfile.frontend -t securepr-frontend .
 #
-# Point the built app at your backend by passing VITE_API_BASE_URL at build time, e.g.:
-#   docker build -f deployment/docker/Dockerfile.frontend \
-#     --build-arg VITE_API_BASE_URL=http://localhost:8000 \
-#     -t securepr-frontend .
+# The API URL is a RUNTIME setting, not a build-time one: pass it as the
+# API_BASE_URL environment variable when you run/deploy the container
+# (e.g. an Azure App Service Application setting), and
+# configure-runtime.sh applies it on every container start. No image
+# rebuild is needed to point at a different API.
+#
+# Split deployment (browser calls the API directly):
+#   docker run -e API_BASE_URL=https://your-api.azurewebsites.net -p 8080:80 securepr-frontend
+#
+# Same-origin deployment (nginx proxies /api/ to a backend on the same
+# network, as docker-compose.yml does):
+#   docker run -e API_UPSTREAM=http://api:8000 -p 8080:80 securepr-frontend
 
 FROM node:20-alpine AS builder
 
@@ -14,9 +22,6 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 COPY frontend/ .
-
-ARG VITE_API_BASE_URL=/api
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
 
@@ -29,12 +34,19 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration
 COPY deployment/docker/nginx.conf /etc/nginx/conf.d/default.conf
 
+# Wire up API_BASE_URL / API_UPSTREAM on every container start.
+# The placeholder keeps the config valid if nginx is ever started without
+# the entrypoint scripts.
+COPY deployment/docker/configure-runtime.sh /docker-entrypoint.d/40-configure-runtime.sh
+RUN chmod +x /docker-entrypoint.d/40-configure-runtime.sh \
+    && touch /etc/nginx/securepr-api-proxy.conf
+
 # Expose port
 EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
 
 # Run nginx
 CMD ["nginx", "-g", "daemon off;"]
