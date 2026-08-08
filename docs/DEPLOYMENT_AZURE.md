@@ -1,5 +1,14 @@
 # Azure Deployment Guide
 
+> **Deploying to App Service? Use the combined image.**
+> `deployment/docker/Dockerfile.combined` packages nginx (serving the SPA
+> and proxying `/api/` to `127.0.0.1:8000`) together with the Node API in
+> one container. Frontend and API are same-origin, so there is **no API
+> URL to configure** — no build-arg, no runtime setting, no CORS — and you
+> deploy a single Web App instead of two. See
+> [Single-container deployment](#-single-container-deployment-app-service)
+> below. The rest of this guide covers the split two-container setup.
+
 Deploy SecurePR AI to Azure using Container Apps.
 
 This matches the app's actual current architecture: a single API container
@@ -32,6 +41,65 @@ The frontend calls the API's public HTTPS URL directly (CORS is open in
 disk — neither is safe for concurrent multi-replica access. Keep
 `minReplicas`/`maxReplicas` at 1 for the API app unless the queue and
 storage layers are replaced with real shared services.
+
+## 📦 Single-container deployment (App Service)
+
+One image, one Web App. Because the SPA and the API share an origin,
+nothing needs to know the API's URL.
+
+### 1. Build and push
+
+```bash
+RG=securepr-ai-rg
+ACR_NAME=<your-acr-name>
+
+az acr build --registry $ACR_NAME \
+  --image securepr:latest \
+  --file deployment/docker/Dockerfile.combined .
+```
+
+### 2. Create the Web App
+
+Portal → **App Services → + Create → Web App**:
+- **Publish**: Container, **Operating System**: Linux
+- **Container** tab → Image Source: Azure Container Registry, Image:
+  `securepr`, Tag: `latest`
+
+### 3. Application settings
+
+Web App → **Settings → Configuration → Application settings**:
+
+| Name | Value |
+|---|---|
+| `WEBSITES_PORT` | `80` |
+| `GITHUB_TOKEN` | your GitHub token |
+| `SECUREPR_INGEST_SECRET` | your webhook secret |
+| `RAG_DB_PATH` | `/home/data/rag.db` |
+| `REPOS_DB_PATH` | `/home/data/repos.db` |
+| `JOBS_DB_PATH` | `/home/data/jobs.db` |
+| `LLM_PROVIDER` | `openai` (or omit for rule-based analysis only) |
+| `OPENAI_API_KEY` | your key (omit if no LLM) |
+| `OPENAI_BASE_URL` | your Azure OpenAI endpoint (omit for public OpenAI) |
+| `OPENAI_MODEL` | your deployment/model name |
+
+The `/home` paths matter: Linux App Service persists `/home` across
+restarts, and without them the sql.js databases are wiped on every
+restart or redeploy. `QUEUE_PROVIDER=inproc` is already baked into the
+image.
+
+### 4. Verify
+
+- `https://<app>.azurewebsites.net` — the SPA loads
+- `https://<app>.azurewebsites.net/api/health` — returns `{"status":"ok"}`
+
+Then point your GitHub webhook at
+`https://<app>.azurewebsites.net/api/ingest/github-actions`, using the
+same secret as `SECUREPR_INGEST_SECRET`.
+
+Keep this app at a single instance — the in-process queue and sql.js file
+stores are not safe for concurrent instances.
+
+---
 
 ## 📋 Prerequisites
 
