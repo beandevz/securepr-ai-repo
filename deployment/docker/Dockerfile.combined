@@ -1,6 +1,6 @@
 # Combined single-container image: nginx (SPA + /api proxy) + Node API.
 # Build from the repo root:
-#   docker build -f deployment/docker/Dockerfile.combined -t securepr .
+#   docker build -f deployment/docker/Dockerfile.combined -t securepr-app .
 #
 # Frontend and API are served from the SAME origin, so there is no API URL
 # to configure anywhere (no build-arg, no runtime setting) and no CORS

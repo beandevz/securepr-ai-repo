@@ -21,6 +21,43 @@ function webhookTargetUrl(): string | undefined {
     : undefined;
 }
 
+/**
+ * GitHub puts the useful part of a failure in the response body; the axios
+ * message is only ever "Request failed with status code NNN".
+ */
+function githubErrorDetail(err: unknown): string {
+  const data = (err as {
+    response?: { data?: { message?: string; errors?: Array<{ message?: string }> } };
+  }).response?.data;
+  const parts = [data?.message, ...(data?.errors || []).map(e => e.message)].filter(Boolean);
+  return parts.length > 0 ? parts.join('; ') : (err as Error).message;
+}
+
+/**
+ * Creates the webhook, or adopts the existing one when GitHub rejects the
+ * create as a duplicate (422), re-pointing it at our current secret and
+ * events. Without this, reconnecting a repo that was ever connected - or
+ * had a hook added by hand - fails permanently.
+ */
+async function ensureWebhook(
+  client: RepoWebhookClient, owner: string, name: string, targetUrl: string
+): Promise<number> {
+  try {
+    return await client.createWebhook(owner, name, targetUrl, settings.securePrIngestSecret);
+  } catch (err) {
+    if ((err as { response?: { status?: number } }).response?.status !== 422) {
+      throw err;
+    }
+    const existing = (await client.listWebhooks(owner, name))
+      .find(hook => hook.config?.url === targetUrl);
+    if (!existing) {
+      throw err;
+    }
+    await client.updateWebhook(owner, name, existing.id, targetUrl, settings.securePrIngestSecret);
+    return existing.id;
+  }
+}
+
 export async function connectRepo(repoUrl: string, githubToken: string): Promise<ConnectedRepoSafe> {
   if (!githubToken) {
     throw new ValidationError('githubToken is required');
@@ -59,10 +96,13 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
   const targetUrl = webhookTargetUrl();
   if (targetUrl) {
     try {
-      const webhookId = await client.createWebhook(owner, name, targetUrl, settings.securePrIngestSecret);
+      const webhookId = await ensureWebhook(client, owner, name, targetUrl);
       repo = (await repoStore.setWebhook(repo.id, webhookId)) || repo;
     } catch (err) {
-      console.error(`Auto-webhook creation failed for ${owner}/${name}:`, (err as Error).message);
+      console.error(
+        `Auto-webhook creation failed for ${owner}/${name} (target ${targetUrl}): ` +
+        githubErrorDetail(err)
+      );
     }
   }
 
@@ -88,7 +128,7 @@ export async function configureWebhook(id: string): Promise<ConnectedRepoSafe> {
   const client = new RepoWebhookClient(token);
   let webhookId: number;
   try {
-    webhookId = await client.createWebhook(row.owner, row.name, targetUrl, settings.securePrIngestSecret);
+    webhookId = await ensureWebhook(client, row.owner, row.name, targetUrl);
   } catch (err) {
     const status = (err as { response?: { status?: number } }).response?.status;
     if (status === 401 || status === 403) {
@@ -97,7 +137,9 @@ export async function configureWebhook(id: string): Promise<ConnectedRepoSafe> {
         "(classic PAT) or 'Webhooks: read and write' (fine-grained PAT) and reconnect."
       );
     }
-    throw new VCSIntegrationError(`Failed to create GitHub webhook: ${(err as Error).message}`);
+    throw new VCSIntegrationError(
+      `Failed to create GitHub webhook for target ${targetUrl}: ${githubErrorDetail(err)}`
+    );
   }
   const updated = await repoStore.setWebhook(id, webhookId);
   if (!updated) {

@@ -72,8 +72,10 @@ Web App → **Settings → Configuration → Application settings**:
 | Name | Value |
 |---|---|
 | `WEBSITES_PORT` | `80` |
+| `WEBSITES_ENABLE_APP_SERVICE_STORAGE` | `true` |
 | `GITHUB_TOKEN` | your GitHub token |
 | `SECUREPR_INGEST_SECRET` | your webhook secret |
+| `TOKEN_ENCRYPTION_KEY` | a random string (encrypts stored GitHub tokens) |
 | `RAG_DB_PATH` | `/home/data/rag.db` |
 | `REPOS_DB_PATH` | `/home/data/repos.db` |
 | `JOBS_DB_PATH` | `/home/data/jobs.db` |
@@ -82,10 +84,21 @@ Web App → **Settings → Configuration → Application settings**:
 | `OPENAI_BASE_URL` | your Azure OpenAI endpoint (omit for public OpenAI) |
 | `OPENAI_MODEL` | your deployment/model name |
 
-The `/home` paths matter: Linux App Service persists `/home` across
-restarts, and without them the sql.js databases are wiped on every
-restart or redeploy. `QUEUE_PROVIDER=inproc` is already baked into the
-image.
+**Both** storage settings are needed for data to survive. The container
+filesystem is rebuilt from the image on every restart, redeploy, scale or
+platform-initiated move, so the sql.js databases (connected repos and
+their encrypted tokens, RAG documents, job history) must live outside it.
+`/home` is the persistent mount — but for *custom containers* it is only
+persisted when `WEBSITES_ENABLE_APP_SERVICE_STORAGE` is `true`; that is
+off by default, and without it `/home/data` is just another ephemeral
+directory.
+
+Note that jobs already queued but not yet processed are lost on restart
+regardless: the queue itself is in-memory (`InProcQueue`), and only the
+job *records* are written to `jobs.db`. Re-running the PR is the way to
+recover those.
+
+`QUEUE_PROVIDER=inproc` is already baked into the image.
 
 ### 4. Verify
 
