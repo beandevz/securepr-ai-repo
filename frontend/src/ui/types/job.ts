@@ -11,6 +11,8 @@ export type Job = {
   status: JobStatus;
   owner?: string;
   repo?: string;
+  /** 'github.com' or an enterprise host such as 'github.boschdevcloud.com'. */
+  host?: string;
   pr_number?: number;
   head_sha?: string;
   result?: JobResult;

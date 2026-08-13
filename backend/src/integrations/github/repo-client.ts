@@ -1,4 +1,5 @@
 import { GitHubClient } from './client.js';
+import { GITHUB_DOTCOM_API } from './host.js';
 
 /**
  * GitHub repo + webhook management, shared HTTP client per token.
@@ -6,8 +7,8 @@ import { GitHubClient } from './client.js';
 export class RepoWebhookClient {
   private client: GitHubClient;
 
-  constructor(token: string) {
-    this.client = GitHubClient.getInstance(token);
+  constructor(token: string, apiBaseUrl: string = GITHUB_DOTCOM_API) {
+    this.client = GitHubClient.getInstance(token, apiBaseUrl);
   }
 
   /** Validates the token has access to the repo; throws on 401/404. */

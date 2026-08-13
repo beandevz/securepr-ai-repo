@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 export interface Settings {
   securePrIngestSecret: string;
   githubToken: string | undefined;
+  githubAllowedHosts: string[];
 
   queueProvider: string;
   inprocQueueMaxsize: number;
@@ -41,11 +42,25 @@ export interface Settings {
   mergeGateMinSeverity: string;
 }
 
+/** Comma-separated host allow-list, e.g. "github.com,github.boschdevcloud.com". */
+function parseHostList(raw: string): string[] {
+  const hosts = raw
+    .split(',')
+    .map(h => h.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+    .filter(Boolean);
+  // github.com is always permitted so a misconfigured list can't lock out the
+  // default provider.
+  return Array.from(new Set(['github.com', ...hosts]));
+}
+
 function loadSettings(): Settings {
   const env = process.env;
   return {
     securePrIngestSecret: env.SECUREPR_INGEST_SECRET || 'change_me',
     githubToken: env.GITHUB_TOKEN || undefined,
+    githubAllowedHosts: parseHostList(
+      env.GITHUB_ALLOWED_HOSTS || 'github.com,github.boschdevcloud.com'
+    ),
 
     queueProvider: env.QUEUE_PROVIDER || 'inproc',
     inprocQueueMaxsize: parseInt(env.INPROC_QUEUE_MAXSIZE || '200', 10),

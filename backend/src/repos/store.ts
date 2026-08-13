@@ -1,5 +1,6 @@
 import initSqlJs, { type Database as SqlJsDatabase } from 'sql.js';
 import { settings } from '../core/settings.js';
+import { GITHUB_DOTCOM_HOST } from '../integrations/github/host.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -9,6 +10,8 @@ export interface ConnectedRepoSafe {
   owner: string;
   name: string;
   url: string;
+  /** GitHub host, e.g. 'github.com' or 'github.boschdevcloud.com'. */
+  host: string;
   webhookConfigured: boolean;
   lastSync: string;
   status: 'active' | 'inactive';
@@ -19,6 +22,7 @@ export interface ConnectedRepoRow {
   owner: string;
   name: string;
   url: string;
+  host: string | null;
   encrypted_token: string;
   webhook_id: number | null;
   status: string;
@@ -60,21 +64,50 @@ function saveDb(db: SqlJsDatabase): void {
   fs.writeFileSync(dbPath, Buffer.from(data));
 }
 
+const CREATE_TABLE_SQL =
+  'CREATE TABLE IF NOT EXISTS connected_repos(' +
+  'id TEXT PRIMARY KEY, ' +
+  'owner TEXT NOT NULL, ' +
+  'name TEXT NOT NULL, ' +
+  'url TEXT NOT NULL, ' +
+  "host TEXT NOT NULL DEFAULT 'github.com', " +
+  'encrypted_token TEXT NOT NULL, ' +
+  'webhook_id INTEGER, ' +
+  "status TEXT NOT NULL DEFAULT 'active', " +
+  "created_at TEXT DEFAULT (datetime('now')), " +
+  'last_sync TEXT, ' +
+  'UNIQUE(host, owner, name))';
+
+/**
+ * Pre-multi-host DBs have no `host` column and a UNIQUE(owner, name) constraint
+ * that would wrongly reject the same owner/repo existing on both github.com and
+ * an enterprise host. SQLite can't alter a constraint, so rebuild the table and
+ * backfill legacy rows as github.com.
+ */
+function migrateLegacySchema(db: SqlJsDatabase): void {
+  const schema = db.exec(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'connected_repos'"
+  );
+  const ddl = String(schema[0]?.values?.[0]?.[0] || '');
+  if (!ddl || ddl.includes('UNIQUE(host, owner, name)')) {
+    return;
+  }
+
+  const hasHost = ddl.includes('host TEXT');
+  db.run('ALTER TABLE connected_repos RENAME TO connected_repos_legacy');
+  db.run(CREATE_TABLE_SQL);
+  db.run(
+    'INSERT INTO connected_repos(id, owner, name, url, host, encrypted_token, webhook_id, status, created_at, last_sync) ' +
+    `SELECT id, owner, name, url, ${hasHost ? "COALESCE(host, 'github.com')" : "'github.com'"}, ` +
+    'encrypted_token, webhook_id, status, created_at, last_sync FROM connected_repos_legacy'
+  );
+  db.run('DROP TABLE connected_repos_legacy');
+}
+
 export async function initDb(): Promise<void> {
   const db = await getDb();
-  db.run(
-    'CREATE TABLE IF NOT EXISTS connected_repos(' +
-    'id TEXT PRIMARY KEY, ' +
-    'owner TEXT NOT NULL, ' +
-    'name TEXT NOT NULL, ' +
-    'url TEXT NOT NULL, ' +
-    'encrypted_token TEXT NOT NULL, ' +
-    'webhook_id INTEGER, ' +
-    "status TEXT NOT NULL DEFAULT 'active', " +
-    "created_at TEXT DEFAULT (datetime('now')), " +
-    'last_sync TEXT, ' +
-    'UNIQUE(owner, name))'
-  );
+  db.run(CREATE_TABLE_SQL);
+  migrateLegacySchema(db);
   saveDb(db);
 }
 
@@ -84,6 +117,7 @@ function toSafe(row: ConnectedRepoRow): ConnectedRepoSafe {
     owner: row.owner,
     name: row.name,
     url: row.url,
+    host: row.host || GITHUB_DOTCOM_HOST,
     webhookConfigured: row.webhook_id != null,
     lastSync: row.last_sync || row.created_at,
     status: row.status === 'active' ? 'active' : 'inactive',
@@ -97,14 +131,16 @@ export async function insertRepo(options: {
   owner: string;
   name: string;
   url: string;
+  host?: string;
   encryptedToken: string;
 }): Promise<ConnectedRepoSafe> {
   await initDb();
   const db = await getDb();
+  const host = options.host || GITHUB_DOTCOM_HOST;
 
   const existing = db.exec(
-    'SELECT id FROM connected_repos WHERE owner = ? AND name = ?',
-    [options.owner, options.name]
+    'SELECT id FROM connected_repos WHERE host = ? AND owner = ? AND name = ?',
+    [host, options.owner, options.name]
   );
   if (existing.length > 0 && existing[0].values.length > 0) {
     const err = new Error('Repository already connected') as Error & { code: string };
@@ -114,8 +150,8 @@ export async function insertRepo(options: {
 
   const id = crypto.randomUUID();
   db.run(
-    'INSERT INTO connected_repos(id, owner, name, url, encrypted_token) VALUES (?, ?, ?, ?, ?)',
-    [id, options.owner, options.name, options.url, options.encryptedToken]
+    'INSERT INTO connected_repos(id, owner, name, url, host, encrypted_token) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, options.owner, options.name, options.url, host, options.encryptedToken]
   );
   saveDb(db);
 
@@ -144,14 +180,20 @@ export async function getRepoById(id: string): Promise<ConnectedRepoRow | null> 
 }
 
 /**
- * Look up a repo (with encrypted token) by owner/name — used to resolve which
- * stored token to use for an inbound webhook (internal use only).
+ * Look up a repo (with encrypted token) by host/owner/name — used to resolve
+ * which stored token to use for an inbound webhook (internal use only).
+ * Omitting the host matches on owner/name alone, which is ambiguous once the
+ * same repo name exists on two hosts, so callers should pass it when known.
  */
-export async function getRepoByOwnerName(owner: string, name: string): Promise<ConnectedRepoRow | null> {
+export async function getRepoByOwnerName(
+  owner: string, name: string, host?: string
+): Promise<ConnectedRepoRow | null> {
   await initDb();
   const db = await getDb();
-  const stmt = db.prepare('SELECT * FROM connected_repos WHERE owner = ? AND name = ?');
-  stmt.bind([owner, name]);
+  const stmt = host
+    ? db.prepare('SELECT * FROM connected_repos WHERE host = ? AND owner = ? AND name = ?')
+    : db.prepare('SELECT * FROM connected_repos WHERE owner = ? AND name = ?');
+  stmt.bind(host ? [host, owner, name] : [owner, name]);
   let row: ConnectedRepoRow | null = null;
   if (stmt.step()) {
     row = stmt.getAsObject() as unknown as ConnectedRepoRow;

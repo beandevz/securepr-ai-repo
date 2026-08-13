@@ -4,6 +4,7 @@ import { ValidationError } from '../exceptions.js';
 import { Job } from '../queue/models.js';
 import { jobStore } from '../queue/job-store.js';
 import { ChecksPublisher } from '../integrations/github/checks-publisher.js';
+import { GITHUB_DOTCOM_API, GITHUB_DOTCOM_HOST } from '../integrations/github/host.js';
 
 /**
  * Service for handling webhook ingestion and job creation.
@@ -49,13 +50,14 @@ export class IngestService {
     owner: string,
     repo: string,
     headSha: string,
-    mode: string
+    mode: string,
+    apiBaseUrl?: string
   ): Promise<number | null> {
     if (!settings.statusReportingEnabled) {
       return null;
     }
 
-    const checks = new ChecksPublisher(token);
+    const checks = new ChecksPublisher(token, apiBaseUrl);
 
     try {
       if (mode === 'check_run') {
@@ -89,7 +91,9 @@ export class IngestService {
     token: string,
     payload: Record<string, unknown>,
     checkRunId: number | null,
-    statusMode: string
+    statusMode: string,
+    githubHost: string = GITHUB_DOTCOM_HOST,
+    apiBaseUrl: string = GITHUB_DOTCOM_API
   ): Promise<Job> {
     const jobId = 'job_' + uuidv4().replace(/-/g, '');
 
@@ -100,6 +104,7 @@ export class IngestService {
       repo,
       prNumber,
       headSha,
+      host: githubHost,
     });
 
     return {
@@ -109,6 +114,8 @@ export class IngestService {
       prNumber,
       headSha,
       githubToken: token,
+      githubHost,
+      apiBaseUrl,
       payload,
       checkRunId,
       statusMode,

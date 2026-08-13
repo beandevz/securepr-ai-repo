@@ -449,3 +449,46 @@ After any major changes, append to this file (≤25 lines):
 ```
 
 This keeps context fresh for future AI sessions without re-reading full codebase.
+
+### 2026-08-11: Multi-host GitHub support (github.com + GitHub Enterprise Server)
+**Decision**: Resolve the GitHub API root per repo/job instead of hard-coding
+`https://api.github.com`. New `integrations/github/host.ts` owns host parsing,
+allow-listing, and the `apiBaseUrlForHost()` mapping (github.com →
+`api.github.com`; any other host → `https://<host>/api/v3`).
+**Why**: Bosch repos live on `github.boschdevcloud.com` (GHES), which serves
+its API from the same hostname under `/api/v3`. One deployment must serve both.
+**Impact**:
+- `GITHUB_ALLOWED_HOSTS` env (default `github.com,github.boschdevcloud.com`);
+  github.com is always kept in the list. Host is untrusted input — the stored
+  token is sent there — so it is allow-listed, not merely parsed.
+- `GitHubClient` singletons keyed by (apiBaseUrl, token), so hosts never share
+  a pooled client or token. Publishers/`RepoWebhookClient`/`DiffFetcher`/
+  `status-client` all take an optional `apiBaseUrl` (defaults to github.com).
+- `Job` carries `githubHost` + `apiBaseUrl`; pipeline stages use them.
+- Ingest derives the host from `repository.html_url` (or the
+  `X-SecurePR-Github-Host` header) and rejects non-allow-listed hosts.
+- `connected_repos` and `jobs` gained a `host` column; `connected_repos`
+  uniqueness moved from (owner, name) to (host, owner, name) via an in-place
+  table rebuild, so the same repo name can exist on both hosts. Legacy rows
+  backfill to github.com. Verified against the existing repos.db/jobs.db.
+- `GET /github/status/...` accepts `?host=`.
+**Next**: Surface the host on job/PR links in the UI; consider per-host default
+tokens for GHES service accounts.
+
+### 2026-08-13: GitHub token scopes documented (docs/GITHUB_TOKEN_SCOPES.md)
+**Current state**: Audited every GitHub API call and mapped it to the required
+token permission. Fine-grained PAT needs Metadata:R, Webhooks:RW,
+Pull requests:RW, Issues:RW, Commit statuses:RW, Checks:R. Classic PAT needs
+`repo` + `admin:repo_hook` (not `write:repo_hook` — `disconnectRepo` deletes).
+**Decision**: Recommend `STATUS_REPORTING_MODE=commit_status` for any PAT
+deployment. `POST /check-runs` is GitHub App-only; a PAT always 403s there.
+The path already degrades safely (ingest-service.ts:78 swallows → publish.ts:100
+falls through to createCommitStatus), so the gate works, but check_run mode
+burns a guaranteed-failing call per job.
+**Risks / open questions**:
+- Real check runs require moving to a GitHub App installation token.
+- `TOKEN_ENCRYPTION_KEY` still defaults to `change_me`; it decrypts every
+  stored per-repo token.
+**Next**: (1) consider defaulting STATUS_REPORTING_MODE to commit_status in
+.env.example, (2) surface a permission-preflight on Connect Repo, (3) evaluate
+GitHub App auth.

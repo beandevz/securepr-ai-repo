@@ -31,7 +31,7 @@ export class PublishStage implements PipelineStage {
 
     // Publish review (best-effort: a publishing failure must not block the
     // status/check-run update below, which is the actual merge-gate signal).
-    const publisher = new ReviewPublisher(context.job.githubToken);
+    const publisher = new ReviewPublisher(context.job.githubToken, context.job.apiBaseUrl);
     try {
       await publisher.createReview(
         context.job.owner,
@@ -85,7 +85,7 @@ export class PublishStage implements PipelineStage {
   }
 
   private async updateStatus(context: PipelineContext): Promise<void> {
-    const checks = new ChecksPublisher(context.job.githubToken);
+    const checks = new ChecksPublisher(context.job.githubToken, context.job.apiBaseUrl);
     const mode = (context.job.statusMode || settings.statusReportingMode).toLowerCase();
 
     const conclusion = context.shouldFail ? 'failure' : 'success';

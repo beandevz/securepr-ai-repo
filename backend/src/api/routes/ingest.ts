@@ -3,6 +3,12 @@ import { settings } from '../../core/settings.js';
 import { verifyHmacSha256, decryptSecret } from '../../core/security.js';
 import { IngestService } from '../../services/ingest-service.js';
 import { getRepoByOwnerName } from '../../repos/store.js';
+import {
+  GITHUB_DOTCOM_HOST,
+  apiBaseUrlForHost,
+  hostFromWebhookPayload,
+  isAllowedHost,
+} from '../../integrations/github/host.js';
 import { ValidationError } from '../../exceptions.js';
 
 const router = Router();
@@ -44,10 +50,20 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
       throw e;
     }
 
+    // Which GitHub instance sent this? Header override (relay path) > the host
+    // embedded in the payload's repository URLs > github.com.
+    const headerHost = (req.headers['x-securepr-github-host'] as string | undefined)?.trim();
+    const payloadHost = headerHost || hostFromWebhookPayload(payload);
+    if (payloadHost && !isAllowedHost(payloadHost)) {
+      res.status(400).json({ detail: `GitHub host '${payloadHost}' is not allowed` });
+      return;
+    }
+    const host = (payloadHost || GITHUB_DOTCOM_HOST).toLowerCase();
+
     // Get GitHub token: explicit header > stored token for this connected repo > global fallback
     let token = req.headers['x-securepr-github-token'] as string | undefined;
     if (!token) {
-      const connectedRepo = await getRepoByOwnerName(owner, repoName);
+      const connectedRepo = await getRepoByOwnerName(owner, repoName, host);
       if (connectedRepo) {
         token = decryptSecret(connectedRepo.encrypted_token);
       }
@@ -58,15 +74,17 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
       return;
     }
 
+    const apiBaseUrl = apiBaseUrlForHost(host);
+
     // Create check run or commit status
     const mode = settings.statusReportingMode.toLowerCase();
     const checkRunId = await IngestService.createCheckRunIfEnabled(
-      token, owner, repoName, headSha, mode
+      token, owner, repoName, headSha, mode, apiBaseUrl
     );
 
     // Create job
     const job = await IngestService.createJob(
-      owner, repoName, prNumber, headSha, token, payload, checkRunId, mode
+      owner, repoName, prNumber, headSha, token, payload, checkRunId, mode, host, apiBaseUrl
     );
 
     // Enqueue for processing
@@ -78,6 +96,7 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
       job_id: job.jobId,
       check_run_id: checkRunId,
       mode,
+      host,
     });
   } catch (err) {
     console.error('Ingest error:', err);

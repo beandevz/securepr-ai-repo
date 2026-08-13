@@ -26,7 +26,7 @@ function isNoiseFile(path: string): boolean {
 export class FetchDiffStage implements PipelineStage {
   async execute(context: PipelineContext): Promise<PipelineContext> {
     try {
-      const fetcher = new DiffFetcher(context.job.githubToken);
+      const fetcher = new DiffFetcher(context.job.githubToken, context.job.apiBaseUrl);
       const allFiles = await fetcher.fetchFiles(
         context.job.owner,
         context.job.repo,

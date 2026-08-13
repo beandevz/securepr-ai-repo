@@ -1,5 +1,6 @@
 import initSqlJs, { type Database as SqlJsDatabase } from 'sql.js';
 import { settings } from '../core/settings.js';
+import { GITHUB_DOTCOM_HOST } from '../integrations/github/host.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -19,6 +20,8 @@ export interface JobRecord {
   updated_at: string;
   owner: string;
   repo: string;
+  /** GitHub host the PR lives on, e.g. 'github.com' or a GHES instance. */
+  host: string;
   pr_number: number;
   head_sha: string;
   result?: Record<string, unknown> | null;
@@ -32,6 +35,7 @@ interface JobRow {
   updated_at: string;
   owner: string;
   repo: string;
+  host: string | null;
   pr_number: number;
   head_sha: string;
   result: string | null;
@@ -46,6 +50,7 @@ function toRecord(row: JobRow): JobRecord {
     updated_at: row.updated_at,
     owner: row.owner,
     repo: row.repo,
+    host: row.host || GITHUB_DOTCOM_HOST,
     pr_number: row.pr_number,
     head_sha: row.head_sha,
     result: row.result ? JSON.parse(row.result) : null,
@@ -99,10 +104,25 @@ async function initDb(): Promise<void> {
     'repo TEXT NOT NULL, ' +
     'pr_number INTEGER NOT NULL, ' +
     'head_sha TEXT NOT NULL, ' +
+    "host TEXT NOT NULL DEFAULT 'github.com', " +
     'result TEXT, ' +
     'error TEXT)'
   );
+  // Jobs written before multi-host support predate the column; backfill them
+  // as github.com rather than forcing users to drop the DB.
+  addColumnIfMissing(db, 'jobs', 'host', "TEXT NOT NULL DEFAULT 'github.com'");
   saveDb(db);
+}
+
+/** sql.js has no "ADD COLUMN IF NOT EXISTS"; probe PRAGMA and add when absent. */
+function addColumnIfMissing(
+  db: SqlJsDatabase, table: string, column: string, definition: string
+): void {
+  const info = db.exec(`PRAGMA table_info(${table})`);
+  const columns = info[0]?.values.map(row => String(row[1])) || [];
+  if (!columns.includes(column)) {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 async function getRow(jobId: string): Promise<JobRow | null> {
@@ -124,14 +144,16 @@ export class JobStore {
     repo: string;
     prNumber: number;
     headSha: string;
+    host?: string;
   }): Promise<JobRecord> {
     await initDb();
     const db = await getDb();
     const now = nowIso();
+    const host = options.host || GITHUB_DOTCOM_HOST;
     db.run(
-      'INSERT INTO jobs(id, status, created_at, updated_at, owner, repo, pr_number, head_sha, result, error) ' +
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)',
-      [options.jobId, 'queued', now, now, options.owner, options.repo, options.prNumber, options.headSha]
+      'INSERT INTO jobs(id, status, created_at, updated_at, owner, repo, pr_number, head_sha, host, result, error) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)',
+      [options.jobId, 'queued', now, now, options.owner, options.repo, options.prNumber, options.headSha, host]
     );
     saveDb(db);
     return {
@@ -141,6 +163,7 @@ export class JobStore {
       updated_at: now,
       owner: options.owner,
       repo: options.repo,
+      host,
       pr_number: options.prNumber,
       head_sha: options.headSha,
       result: null,

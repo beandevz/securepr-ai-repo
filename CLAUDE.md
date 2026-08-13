@@ -65,7 +65,8 @@ Keep each update ≤ 25 lines.
 
 **Integration Layer** (`src/integrations/` - resource management + retry):
 - `http-client.ts` - HttpClient (axios, connection pooling, exponential backoff)
-- `github/client.ts` - GitHubClient (singleton per token, uses HttpClient)
+- `github/host.ts` - host allow-list (`GITHUB_ALLOWED_HOSTS`), `parseRepoUrl`, `apiBaseUrlForHost` (github.com → api.github.com; GHES → `https://<host>/api/v3`), `hostFromWebhookPayload`
+- `github/client.ts` - GitHubClient (singleton per apiBaseUrl+token, uses HttpClient)
 - `github/review-publisher.ts` - ReviewPublisher (PR reviews, comments)
 - `github/checks-publisher.ts` - ChecksPublisher (check runs, commit statuses)
 - `github/status-client.ts` - getCommitStatus, getCheckRuns
@@ -111,7 +112,7 @@ Keep each update ≤ 25 lines.
 - `formatters.ts` - formatInlineComment, formatSummary
 
 **API Routes** (`src/api/routes/`):
-- `ingest.ts` - POST /ingest/github-actions (accepts native GitHub `X-Hub-Signature-256` or custom `X-SecurePR-Signature`; resolves per-repo token from `repos/store.ts`)
+- `ingest.ts` - POST /ingest/github-actions (accepts native GitHub `X-Hub-Signature-256` or custom `X-SecurePR-Signature`; resolves the sending host from the payload and the per-repo token from `repos/store.ts`)
 - `health.ts` - GET /health
 - `jobs.ts` - GET /jobs, GET /jobs/:jobId, DELETE /jobs/:jobId
 - `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ingest
@@ -150,7 +151,7 @@ defines its own local view-model interfaces rather than sharing a central types 
 - DB: SQLite via `sql.js` (WASM) for both the RAG vector store and connected-repo store
 - Frontend: React 18 + TypeScript + Vite
 - Queue: In-process (setInterval poll) or Azure Service Bus (placeholder)
-- VCS: GitHub integration (webhook create/delete, PR reviews, check runs)
+- VCS: GitHub integration (webhook create/delete, PR reviews, check runs) on github.com **and** GitHub Enterprise Server hosts (allow-listed via `GITHUB_ALLOWED_HOSTS`)
 
 ---
 

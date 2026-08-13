@@ -1,19 +1,12 @@
 import { settings } from '../core/settings.js';
 import { encryptSecret, decryptSecret } from '../core/security.js';
 import { RepoWebhookClient } from '../integrations/github/repo-client.js';
+import { apiBaseUrlForHost, parseRepoUrl } from '../integrations/github/host.js';
 import * as repoStore from '../repos/store.js';
 import { ConnectedRepoSafe } from '../repos/store.js';
 import { ValidationError, VCSIntegrationError, ConfigurationError } from '../exceptions.js';
 
-const REPO_URL_RE = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
-
-export function parseRepoUrl(url: string): { owner: string; name: string } {
-  const match = REPO_URL_RE.exec((url || '').trim());
-  if (!match) {
-    throw new ValidationError('repoUrl must look like https://github.com/owner/repo');
-  }
-  return { owner: match[1], name: match[2] };
-}
+export { parseRepoUrl };
 
 function webhookTargetUrl(): string | undefined {
   return settings.publicBaseUrl
@@ -62,20 +55,21 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
   if (!githubToken) {
     throw new ValidationError('githubToken is required');
   }
-  const { owner, name } = parseRepoUrl(repoUrl);
+  const { host, owner, name } = parseRepoUrl(repoUrl);
+  const apiBaseUrl = apiBaseUrlForHost(host);
 
-  const client = new RepoWebhookClient(githubToken);
+  const client = new RepoWebhookClient(githubToken, apiBaseUrl);
   try {
     await client.getRepo(owner, name);
   } catch (err) {
     const status = (err as { response?: { status?: number } }).response?.status;
     if (status === 401 || status === 403) {
-      throw new VCSIntegrationError('GitHub token is invalid or lacks repo access');
+      throw new VCSIntegrationError(`Token is invalid or lacks repo access on ${host}`);
     }
     if (status === 404) {
       throw new VCSIntegrationError('Repository not found (check the URL and token permissions)');
     }
-    throw new VCSIntegrationError(`Failed to reach GitHub: ${(err as Error).message}`);
+    throw new VCSIntegrationError(`Failed to reach ${host}: ${(err as Error).message}`);
   }
 
   let repo: ConnectedRepoSafe;
@@ -84,6 +78,7 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
       owner,
       name,
       url: repoUrl,
+      host,
       encryptedToken: encryptSecret(githubToken),
     });
   } catch (err) {
@@ -125,7 +120,7 @@ export async function configureWebhook(id: string): Promise<ConnectedRepoSafe> {
   }
 
   const token = decryptSecret(row.encrypted_token);
-  const client = new RepoWebhookClient(token);
+  const client = new RepoWebhookClient(token, apiBaseUrlForHost(row.host || 'github.com'));
   let webhookId: number;
   try {
     webhookId = await ensureWebhook(client, row.owner, row.name, targetUrl);
@@ -157,7 +152,7 @@ export async function disconnectRepo(id: string): Promise<boolean> {
   if (row.webhook_id != null) {
     try {
       const token = decryptSecret(row.encrypted_token);
-      const client = new RepoWebhookClient(token);
+      const client = new RepoWebhookClient(token, apiBaseUrlForHost(row.host || 'github.com'));
       await client.deleteWebhook(row.owner, row.name, row.webhook_id);
     } catch (err) {
       console.error(`Failed to remove GitHub webhook for ${row.owner}/${row.name}:`, (err as Error).message);

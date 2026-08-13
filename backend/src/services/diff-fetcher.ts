@@ -1,17 +1,20 @@
 import axios, { AxiosResponse } from 'axios';
+import { GITHUB_DOTCOM_API } from '../integrations/github/host.js';
 
 /**
  * Fetches PR files from GitHub API with pagination support.
  */
 export class DiffFetcher {
   private githubToken: string;
+  private apiBaseUrl: string;
 
-  constructor(githubToken: string) {
+  constructor(githubToken: string, apiBaseUrl: string = GITHUB_DOTCOM_API) {
     this.githubToken = githubToken;
+    this.apiBaseUrl = apiBaseUrl;
   }
 
   async fetchFiles(owner: string, repo: string, prNumber: number): Promise<Record<string, unknown>[]> {
-    let url: string | null = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`;
+    let url: string | null = `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`;
     const headers = {
       'Authorization': `Bearer ${this.githubToken}`,
       'Accept': 'application/vnd.github+json',

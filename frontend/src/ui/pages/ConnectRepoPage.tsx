@@ -8,6 +8,8 @@ interface ConnectedRepo {
   owner: string;
   name: string;
   url: string;
+  /** 'github.com' or an enterprise host such as 'github.boschdevcloud.com'. */
+  host?: string;
   webhookConfigured: boolean;
   lastSync: string;
   status: 'active' | 'inactive';
@@ -199,6 +201,19 @@ export const ConnectRepoPage: React.FC = () => {
                         marginBottom: '4px',
                       }}>
                         {repo.owner} / {repo.name}
+                        {repo.host && repo.host !== 'github.com' && (
+                          <span style={{
+                            marginLeft: '8px',
+                            padding: '2px 6px',
+                            borderRadius: '3px',
+                            background: theme.colors.surface3,
+                            color: theme.colors.text2,
+                            fontSize: '10px',
+                            fontWeight: theme.fontWeights.semibold,
+                          }}>
+                            {repo.host}
+                          </span>
+                        )}
                       </div>
                       <div style={{
                         fontFamily: theme.fonts.mono,
@@ -357,7 +372,7 @@ export const ConnectRepoPage: React.FC = () => {
                   type="text"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/owner/repo"
+                  placeholder="https://github.com/owner/repo or https://github.boschdevcloud.com/owner/repo"
                   required
                   style={{
                     width: '100%',

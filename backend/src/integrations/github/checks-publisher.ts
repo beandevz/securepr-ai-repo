@@ -1,4 +1,5 @@
 import { GitHubClient } from './client.js';
+import { GITHUB_DOTCOM_API } from './host.js';
 
 /**
  * GitHub checks/status publisher with shared HTTP client.
@@ -6,8 +7,8 @@ import { GitHubClient } from './client.js';
 export class ChecksPublisher {
   private client: GitHubClient;
 
-  constructor(githubToken: string) {
-    this.client = GitHubClient.getInstance(githubToken);
+  constructor(githubToken: string, apiBaseUrl: string = GITHUB_DOTCOM_API) {
+    this.client = GitHubClient.getInstance(githubToken, apiBaseUrl);
   }
 
   async createCheckRun(
