@@ -2,6 +2,12 @@
  * Browser-side settings storage (localStorage).
  */
 
+declare global {
+  interface Window {
+    __ENV__?: { API_BASE_URL?: string };
+  }
+}
+
 const STORAGE_KEY = 'securepr-settings';
 
 export interface AppSettings {
@@ -12,7 +18,11 @@ export interface AppSettings {
 
 function getEnvDefaults(): AppSettings {
   return {
-    apiBaseUrl: import.meta.env.VITE_API_BASE_URL || '/api',
+    // Runtime config (set at container start, e.g. an App Service
+    // Application setting) takes priority over the build-time
+    // VITE_API_BASE_URL, so the API URL can change without rebuilding
+    // the image.
+    apiBaseUrl: window.__ENV__?.API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '/api',
     ingestSecret: '',
     githubToken: '',
   };

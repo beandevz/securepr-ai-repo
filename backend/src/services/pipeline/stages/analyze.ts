@@ -17,9 +17,15 @@ export class AnalyzeStage implements PipelineStage {
         continue;
       }
 
-      // Get RAG context
+      // Get RAG context (best-effort: a retrieval/embedding failure must not
+      // abort the whole analysis — fall back to no policy context for this file).
       const ragQuery = `${path}\n${patch.substring(0, 1500)}`;
-      const ragText = await rag.retrieve(ragQuery);
+      let ragText = '';
+      try {
+        ragText = await rag.retrieve(ragQuery);
+      } catch (err) {
+        console.error(`RAG retrieval failed for ${path}, continuing without policy context:`, (err as Error).message);
+      }
 
       // Create analyzers with RAG context
       const analyzers = createAnalyzers(ragText);

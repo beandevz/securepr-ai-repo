@@ -1,8 +1,6 @@
 /**
  * Error fallback UI displayed when error boundary catches an error.
  */
-import React from 'react';
-
 interface ErrorFallbackProps {
   error: Error | null;
   onReset?: () => void;

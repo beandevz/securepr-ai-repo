@@ -1,0 +1,72 @@
+# Combined single-container image: nginx (SPA + /api proxy) + Node API.
+# Build from the repo root:
+#   docker build -f deployment/docker/Dockerfile.combined -t securepr-app .
+#
+# Frontend and API are served from the SAME origin, so there is no API URL
+# to configure anywhere (no build-arg, no runtime setting) and no CORS
+# involved: the browser calls /api/... on this host and nginx proxies it
+# to the API on 127.0.0.1:8000.
+#
+# This suits the app as it stands - the in-process queue and the sql.js
+# file stores pin it to a single instance regardless, so there is nothing
+# to gain from scaling the two halves separately.
+
+# ─── Build frontend ─────────────────────────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ .
+RUN npm run build
+
+# ─── Build backend ──────────────────────────────────────────────────────────
+FROM node:20-alpine AS backend-builder
+
+WORKDIR /app
+
+# Full install first: typescript is a devDependency needed by the build
+COPY backend/package*.json ./
+RUN npm ci
+
+COPY backend/src ./src
+COPY backend/tsconfig.json ./
+RUN npm run build
+
+# Drop devDependencies now that dist/ exists
+RUN npm prune --omit=dev
+
+# ─── Runtime image ──────────────────────────────────────────────────────────
+FROM node:20-alpine
+
+RUN apk add --no-cache nginx
+
+WORKDIR /app
+
+# Backend: compiled output + production dependencies
+COPY --from=backend-builder /app/dist ./dist
+COPY --from=backend-builder /app/node_modules ./node_modules
+COPY --from=backend-builder /app/package.json ./
+
+# Frontend: static build served by nginx
+COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+
+# Alpine's nginx package includes /etc/nginx/http.d/*.conf
+COPY deployment/docker/nginx-combined.conf /etc/nginx/http.d/default.conf
+
+COPY deployment/docker/start-combined.sh /usr/local/bin/start-combined.sh
+RUN chmod +x /usr/local/bin/start-combined.sh
+
+# sql.js writes these; override to a persistent path when the platform
+# provides one (on Azure App Service, /home is persistent storage):
+#   RAG_DB_PATH=/home/data/rag.db REPOS_DB_PATH=... JOBS_DB_PATH=...
+ENV QUEUE_PROVIDER=inproc
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/health || exit 1
+
+CMD ["/usr/local/bin/start-combined.sh"]

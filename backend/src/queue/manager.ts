@@ -19,7 +19,7 @@ export class InProcQueue {
     if (this.queue.length >= this.maxsize) {
       throw new Error('Queue is full');
     }
-    jobStore.setStatus(job.jobId, 'queued');
+    await jobStore.setStatus(job.jobId, 'queued');
     this.queue.push(job);
   }
 
@@ -28,12 +28,12 @@ export class InProcQueue {
 
     const job = this.queue.shift()!;
     try {
-      jobStore.setStatus(job.jobId, 'running');
+      await jobStore.setStatus(job.jobId, 'running');
       const { processJob } = await import('../services/pipeline/pipeline-v2.js');
       const result = await processJob(job);
-      jobStore.setResult(job.jobId, result);
+      await jobStore.setResult(job.jobId, result);
     } catch (e) {
-      jobStore.setError(job.jobId, (e as Error).message);
+      await jobStore.setError(job.jobId, (e as Error).message);
     }
   }
 

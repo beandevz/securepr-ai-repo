@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/build
+**/.git
+**/*.db
+**/.env
+**/.env.local
+**/.DS_Store
+docs
+test-samples

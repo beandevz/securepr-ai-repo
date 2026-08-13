@@ -65,7 +65,7 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
     );
 
     // Create job
-    const job = IngestService.createJob(
+    const job = await IngestService.createJob(
       owner, repoName, prNumber, headSha, token, payload, checkRunId, mode
     );
 

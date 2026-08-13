@@ -3,12 +3,12 @@ import { jobStore } from '../../queue/job-store.js';
 
 const router = Router();
 
-router.get('/jobs', (_req: Request, res: Response) => {
-  res.json(jobStore.list());
+router.get('/jobs', async (_req: Request, res: Response) => {
+  res.json(await jobStore.list());
 });
 
-router.get('/jobs/:jobId', (req: Request, res: Response) => {
-  const job = jobStore.get(req.params.jobId);
+router.get('/jobs/:jobId', async (req: Request, res: Response) => {
+  const job = await jobStore.get(req.params.jobId);
   if (!job) {
     res.status(404).json({ detail: 'Job not found' });
     return;
@@ -16,8 +16,8 @@ router.get('/jobs/:jobId', (req: Request, res: Response) => {
   res.json(job);
 });
 
-router.delete('/jobs/:jobId', (req: Request, res: Response) => {
-  const ok = jobStore.delete(req.params.jobId);
+router.delete('/jobs/:jobId', async (req: Request, res: Response) => {
+  const ok = await jobStore.delete(req.params.jobId);
   if (!ok) {
     res.status(404).json({ detail: 'Job not found' });
     return;
