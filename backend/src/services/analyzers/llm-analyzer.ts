@@ -1,16 +1,48 @@
-import { Finding } from '../../domain/models.js';
+import { Finding, PolicySource } from '../../domain/models.js';
 import { SecurityAnalyzer } from './base.js';
 import { settings } from '../../core/settings.js';
 import { formatChunkPrompt, SYSTEM_PROMPT } from '../prompts.js';
+import { RagChunk, RagContext, emptyRagContext, toPolicySource } from '../rag-service.js';
 
 /**
  * LLM-based contextual security analyzer.
  */
 export class LlmAnalyzer implements SecurityAnalyzer {
-  private ragContext: string;
+  private ragContext: RagContext;
+  private chunksByRef: Map<string, RagChunk>;
 
-  constructor(ragContext: string = '') {
+  constructor(ragContext: RagContext = emptyRagContext()) {
     this.ragContext = ragContext;
+    this.chunksByRef = new Map(ragContext.chunks.map(c => [c.refId, c]));
+  }
+
+  /**
+   * Resolve the reference ids a finding claims to rely on back to retrieved
+   * chunks. Ids that were not in this prompt's RAG_CONTEXT are dropped: the
+   * model cannot cite a document we did not actually retrieve.
+   */
+  private resolvePolicySources(raw: unknown): PolicySource[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+
+    const sources: PolicySource[] = [];
+    const seen = new Set<string>();
+
+    for (const ref of raw) {
+      if (typeof ref !== 'string') continue;
+      const refId = ref.trim();
+      const chunk = this.chunksByRef.get(refId);
+      if (!chunk) {
+        console.warn(`[LlmAnalyzer] Dropping unknown policy ref "${refId}" from LLM response`);
+        continue;
+      }
+      if (seen.has(refId)) continue;
+      seen.add(refId);
+      sources.push(toPolicySource(chunk));
+    }
+
+    return sources;
   }
 
   async analyze(filePath: string, content: string): Promise<Finding[]> {
@@ -21,7 +53,7 @@ export class LlmAnalyzer implements SecurityAnalyzer {
 
     try {
       const { chatCompletionJson } = await import('../../integrations/ai/openai-client.js');
-      const prompt = formatChunkPrompt(this.ragContext, content);
+      const prompt = formatChunkPrompt(this.ragContext.promptText, content);
       const data = await chatCompletionJson(SYSTEM_PROMPT, prompt);
 
       const findings: Finding[] = [];
@@ -54,6 +86,7 @@ export class LlmAnalyzer implements SecurityAnalyzer {
           recommendation: (item.recommendation as string) || '',
           safe_fix_example: (item.safe_fix_example as string) || '',
           references: (item.references as string[]) || [],
+          policy_sources: this.resolvePolicySources(item.policy_refs),
         };
         findings.push(finding);
       }

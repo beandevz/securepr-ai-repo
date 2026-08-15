@@ -540,3 +540,28 @@ citations. `/health` and `/rag/stats` expose RAG health; `/rag/search` marks
 add `policy_refs` to the finding schema, resolve refs to `Finding.policy_sources`
 (dropping hallucinated ids), render the source in PR comments + UI. Then Phase 3
 (better retrieval query, multi-hunk retrieve, prompt-injection delimiters).
+
+### 2026-08-15: RAG hardening Phase 2 (citations in PR comments)
+**Current state**: Findings now carry `policy_sources` and every PR comment
+states its grounding. Prompt labels each excerpt `[R1 | source=… | chunk i/n |
+relevance x]`; the finding schema gained `policy_refs`, which LlmAnalyzer
+resolves against the ids it actually sent — unknown ids are dropped with a warn,
+so a citation can never name a document that was not retrieved. Excerpts are
+sliced from the stored chunk (200 chars), never from model output.
+Inline comment renders `> 📚 Policy source: <doc> — chunk 3/12 · relevance 0.71`
+plus the quote, or an explicit "_No matching internal policy_" line. Review
+summary + check-run summary share `buildSummary()` and end with a Knowledge base
+line (documents cited / retrieved-but-uncited / disabled / empty / no match /
+unavailable / failed). `rag_status` + `cited_sources` land in job metadata, and
+ResultViewerPageEnhanced renders the source card per finding.
+**Decisions**:
+- `references` is now reserved for public refs (OWASP/CWE); document attribution
+  goes through `policy_sources` only — the model is told never to write a file name.
+- `formatChunkPrompt` fills both placeholders in one regex pass with a replacer,
+  so `$&`/`$'` or a literal `{chunk}` in doc/diff text cannot corrupt the prompt.
+**Verification**: backend `typecheck` + `test` (61 passed, 21 new across
+llm-analyzer/formatters); frontend `tsc --noEmit` clean; rendered comment/summary
+markdown inspected via a scratch script.
+**Next**: Phase 3 — retrieval query from added lines only, per-hunk retrieve +
+dedupe for long patches, nonce-delimited untrusted-data blocks for RAG/diff.
+Consider carrying citations into the Markdown/HTML exports (`ui/utils/export.ts`).

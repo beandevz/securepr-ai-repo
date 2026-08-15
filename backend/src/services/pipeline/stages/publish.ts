@@ -1,7 +1,8 @@
 import { PipelineContext, PipelineStage } from '../base.js';
 import { ReviewPublisher } from '../../../integrations/github/review-publisher.js';
 import { ChecksPublisher } from '../../../integrations/github/checks-publisher.js';
-import { formatInlineComment, formatSummary } from '../../../utils/formatters.js';
+import { collectCitedSources, formatInlineComment, formatSummary } from '../../../utils/formatters.js';
+import { summarizeRagStatuses } from '../../rag-service.js';
 import { settings } from '../../../core/settings.js';
 
 /**
@@ -22,12 +23,7 @@ export class PublishStage implements PipelineStage {
     }
 
     // Build summary
-    const summary = formatSummary(
-      context.overallSeverity,
-      context.findings.length,
-      context.shouldFail,
-      settings.mergeGateMinSeverity
-    );
+    const summary = this.buildSummary(context);
 
     // Publish review (best-effort: a publishing failure must not block the
     // status/check-run update below, which is the actual merge-gate signal).
@@ -84,17 +80,27 @@ export class PublishStage implements PipelineStage {
     return context;
   }
 
+  /** Review body and check-run summary must tell the same story, including RAG grounding. */
+  private buildSummary(context: PipelineContext): string {
+    const ragStatus = summarizeRagStatuses(context.ragStatuses);
+
+    return formatSummary(
+      context.overallSeverity,
+      context.findings.length,
+      context.shouldFail,
+      settings.mergeGateMinSeverity,
+      ragStatus
+        ? { status: ragStatus, citedSources: collectCitedSources(context.findings) }
+        : undefined
+    );
+  }
+
   private async updateStatus(context: PipelineContext): Promise<void> {
     const checks = new ChecksPublisher(context.job.githubToken, context.job.apiBaseUrl);
     const mode = (context.job.statusMode || settings.statusReportingMode).toLowerCase();
 
     const conclusion = context.shouldFail ? 'failure' : 'success';
-    const summary = formatSummary(
-      context.overallSeverity,
-      context.findings.length,
-      context.shouldFail,
-      settings.mergeGateMinSeverity
-    );
+    const summary = this.buildSummary(context);
 
     try {
       if (mode === 'check_run' && context.job.checkRunId) {

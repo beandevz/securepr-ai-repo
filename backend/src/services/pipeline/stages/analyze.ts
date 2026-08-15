@@ -22,12 +22,13 @@ export class AnalyzeStage implements PipelineStage {
       // continues on general secure-coding knowledge.
       const ragQuery = `${path}\n${patch.substring(0, 1500)}`;
       const ragContext = await rag.retrieve(ragQuery);
+      context.ragStatuses.push(ragContext.status);
       if (ragContext.status !== 'ok') {
         console.log(`[RAG] No policy context for ${path} (${ragContext.status})`);
       }
 
       // Create analyzers with RAG context
-      const analyzers = createAnalyzers(ragContext.promptText);
+      const analyzers = createAnalyzers(ragContext);
 
       // Run all analyzers
       for (const analyzer of analyzers) {

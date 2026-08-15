@@ -24,6 +24,20 @@ export interface Location {
   end_line: number;
 }
 
+/**
+ * An internal policy/reference document a finding was grounded in.
+ * Built server-side from the retrieved chunk, never from model output, so a
+ * citation always points at a document that was actually retrieved.
+ */
+export interface PolicySource {
+  source: string;
+  /** 0-based index of the chunk within its document. */
+  chunk_index: number;
+  total_chunks: number;
+  score: number;
+  excerpt: string;
+}
+
 export interface Finding {
   title: string;
   severity: Severity;
@@ -36,4 +50,6 @@ export interface Finding {
   recommendation: string;
   safe_fix_example?: string;
   references?: string[];
+  /** Internal policy documents backing this finding (empty when none matched). */
+  policy_sources?: PolicySource[];
 }

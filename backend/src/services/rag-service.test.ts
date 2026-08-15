@@ -99,12 +99,12 @@ describe('RagService.retrieve', () => {
     expect(ctx.chunks[0]).toMatchObject({ chunkIndex: 2, totalChunks: 12, score: 0.71 });
   });
 
-  it('formats prompt text with 1-based chunk numbering and score', async () => {
+  it('labels prompt chunks with the ref id, 1-based chunk numbering and score', async () => {
     search.mockResolvedValue([hit('secure-coding.pdf', 0.712345, 2, 12)]);
 
     const ctx = await new RagService().retrieve('query');
 
-    expect(ctx.promptText).toContain('[source=secure-coding.pdf chunk=3/12 score=0.712]');
+    expect(ctx.promptText).toContain('[R1 | source=secure-coding.pdf | chunk 3/12 | relevance 0.712]');
     expect(ctx.promptText).toContain('policy text from secure-coding.pdf');
   });
 

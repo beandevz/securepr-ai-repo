@@ -1,4 +1,5 @@
 import { settings } from '../core/settings.js';
+import { PolicySource } from '../domain/models.js';
 
 /** Why a retrieval produced (or failed to produce) policy context. */
 export type RagStatus =
@@ -27,14 +28,48 @@ export interface RagContext {
   status: RagStatus;
 }
 
-function emptyContext(status: RagStatus): RagContext {
+/** Longest excerpt quoted back in a PR comment. */
+const EXCERPT_MAX_CHARS = 200;
+
+export function emptyRagContext(status: RagStatus = 'disabled'): RagContext {
   return { chunks: [], promptText: '', status };
 }
 
 function formatPromptText(chunks: RagChunk[]): string {
   return chunks
-    .map(c => `[source=${c.source} chunk=${c.chunkIndex + 1}/${c.totalChunks} score=${c.score.toFixed(3)}]\n${c.text}`)
+    .map(c =>
+      `[${c.refId} | source=${c.source} | chunk ${c.chunkIndex + 1}/${c.totalChunks} | ` +
+      `relevance ${c.score.toFixed(3)}]\n${c.text}`
+    )
     .join('\n\n---\n\n');
+}
+
+/**
+ * Turn a retrieved chunk into a citation. The excerpt is taken from the stored
+ * chunk rather than from the model, so quoted policy text is always verbatim.
+ */
+export function toPolicySource(chunk: RagChunk): PolicySource {
+  const collapsed = chunk.text.replace(/\s+/g, ' ').trim();
+  const excerpt = collapsed.length > EXCERPT_MAX_CHARS
+    ? `${collapsed.slice(0, EXCERPT_MAX_CHARS).trimEnd()}…`
+    : collapsed;
+
+  return {
+    source: chunk.source,
+    chunk_index: chunk.chunkIndex,
+    total_chunks: chunk.totalChunks,
+    score: chunk.score,
+    excerpt,
+  };
+}
+
+/**
+ * Collapse per-file retrieval outcomes into one status for the PR summary:
+ * a single successful retrieval means the knowledge base contributed.
+ */
+export function summarizeRagStatuses(statuses: RagStatus[]): RagStatus | undefined {
+  if (statuses.length === 0) return undefined;
+  return statuses.includes('ok') ? 'ok' : statuses[0];
 }
 
 /** Warn once per process instead of on every file of every PR. */
@@ -49,7 +84,7 @@ let warnedLocalEmbeddings = false;
 export class RagService {
   async retrieve(queryText: string): Promise<RagContext> {
     if (!settings.ragEnabled) {
-      return emptyContext('disabled');
+      return emptyRagContext('disabled');
     }
 
     const { embedTexts, isEmbeddingConfigured } = await import(
@@ -64,7 +99,7 @@ export class RagService {
           'embeddings are not semantically meaningful. Set RAG_ALLOW_LOCAL_EMBEDDINGS=true to override.'
         );
       }
-      return emptyContext('no_embedding_model');
+      return emptyRagContext('no_embedding_model');
     }
 
     try {
@@ -73,12 +108,12 @@ export class RagService {
       const hits = await search(queryEmb, settings.ragTopK);
 
       if (hits.length === 0) {
-        return emptyContext('no_documents');
+        return emptyRagContext('no_documents');
       }
 
       const relevant = hits.filter(h => h.score >= settings.ragMinScore);
       if (relevant.length === 0) {
-        return emptyContext('no_relevant_docs');
+        return emptyRagContext('no_relevant_docs');
       }
 
       const chunks: RagChunk[] = relevant.map((h, i) => ({
@@ -93,7 +128,7 @@ export class RagService {
       return { chunks, promptText: formatPromptText(chunks), status: 'ok' };
     } catch (err) {
       console.error('[RAG] Retrieval failed, continuing without policy context:', (err as Error).message);
-      return emptyContext('error');
+      return emptyRagContext('error');
     }
   }
 }

@@ -1,6 +1,8 @@
 import { Finding } from '../../../domain/models.js';
 import { PipelineContext, PipelineStage } from '../base.js';
 import { getMaxSeverity, shouldFailGate } from '../../../utils/severity.js';
+import { collectCitedSources } from '../../../utils/formatters.js';
+import { summarizeRagStatuses } from '../../rag-service.js';
 import { settings } from '../../../core/settings.js';
 
 /** Shape the result-viewer UI (ResultViewerPageEnhanced/GitHubPRViewPage) expects per finding. */
@@ -19,6 +21,7 @@ function toUiFinding(f: Finding): Record<string, unknown> {
     owasp_category: f.owasp_top10_2025,
     confidence: f.confidence,
     references: f.references || [],
+    policy_sources: f.policy_sources || [],
   };
 }
 
@@ -38,6 +41,8 @@ export class AggregateStage implements PipelineStage {
       should_fail: context.shouldFail,
       count: context.findings.length,
       findings: context.findings.map(toUiFinding),
+      rag_status: summarizeRagStatuses(context.ragStatuses) || 'not_run',
+      cited_sources: collectCitedSources(context.findings),
     };
 
     return context;

@@ -4,6 +4,14 @@ import { theme, calculateScore, shouldFailGate, getSeverityConfig } from '../the
 import { loadSettings } from '../lib/storage';
 import { exportAsJSON, exportAsCSV, exportAsMarkdown, exportAsHTML } from '../utils/export';
 
+interface PolicySource {
+  source: string;
+  chunk_index: number;
+  total_chunks: number;
+  score: number;
+  excerpt: string;
+}
+
 interface Finding {
   severity: string;
   title: string;
@@ -17,6 +25,7 @@ interface Finding {
   safe_fix?: string;
   owasp_category?: string;
   confidence?: number;
+  policy_sources?: PolicySource[];
 }
 
 interface PRResult {
@@ -642,6 +651,66 @@ export const ResultViewerPageEnhanced: React.FC = () => {
                     </pre>
                   </div>
                 )}
+
+                {/* Policy Sources — which knowledge base document backs this finding */}
+                <div style={{ marginTop: '14px' }}>
+                  <div style={{
+                    fontFamily: theme.fonts.mono,
+                    fontSize: '10px',
+                    color: theme.colors.text3,
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    marginBottom: theme.spacing.sm,
+                  }}>
+                    📚 Policy Source
+                  </div>
+                  {finding.policy_sources && finding.policy_sources.length > 0 ? (
+                    finding.policy_sources.map((src, i) => (
+                      <div
+                        key={`${src.source}-${src.chunk_index}-${i}`}
+                        style={{
+                          background: 'rgba(59,130,246,0.06)',
+                          border: `1px solid rgba(59,130,246,0.2)`,
+                          borderRadius: theme.radius.sm,
+                          padding: '10px 12px',
+                          marginBottom: '8px',
+                        }}
+                      >
+                        <div style={{
+                          fontFamily: theme.fonts.mono,
+                          fontSize: '12px',
+                          color: theme.colors.blue2,
+                        }}>
+                          {src.source}
+                          <span style={{ color: theme.colors.text3 }}>
+                            {' '}— chunk {src.chunk_index + 1}/{src.total_chunks} · relevance {src.score.toFixed(2)}
+                          </span>
+                        </div>
+                        {src.excerpt && (
+                          <div style={{
+                            fontFamily: theme.fonts.ui,
+                            fontSize: '12px',
+                            color: theme.colors.text2,
+                            lineHeight: 1.6,
+                            marginTop: '6px',
+                            fontStyle: 'italic',
+                          }}>
+                            "{src.excerpt}"
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{
+                      fontFamily: theme.fonts.ui,
+                      fontSize: '12px',
+                      color: theme.colors.text3,
+                      fontStyle: 'italic',
+                    }}>
+                      No matching internal policy — assessed from general secure-coding knowledge.
+                    </div>
+                  )}
+                </div>
 
                 {/* Fix Button */}
                 <div style={{ marginTop: theme.spacing.lg }}>
