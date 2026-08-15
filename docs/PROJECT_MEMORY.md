@@ -492,3 +492,26 @@ burns a guaranteed-failing call per job.
 **Next**: (1) consider defaulting STATUS_REPORTING_MODE to commit_status in
 .env.example, (2) surface a permission-preflight on Connect Repo, (3) evaluate
 GitHub App auth.
+
+### 2026-08-13: Review flow documented (docs/FLOW.md)
+**Current state**: Traced the live diff-review path. Per changed file: patch →
+RAG retrieve (query = path + first 1500 chars) → RuleBasedAnalyzer + LlmAnalyzer
+→ aggregate → publish. Confirmed RAG *is* wired end-to-end and reaches the LLM
+prompt as `[source=X score=Y]` blocks, with the system prompt asking the model
+to cite the source id in `references[]`.
+**Findings that surprised**:
+- Defaults ship the review as regex-only: `LLM_PROVIDER=none` and
+  `RAG_ENABLED=false` (.env.example:15,22).
+- Source/document name is never shown to the user. `references[]` reaches the
+  job JSON (aggregate.ts:21) but formatInlineComment doesn't render it and the
+  UI's local Finding interface (ResultViewerPageEnhanced.tsx:7) omits the field.
+  Attribution is also model-dependent — RagService.retrieve collapses the
+  (source, text, score) tuples into one string and discards the structure.
+- No chunking despite the CLAUDE.md anchor: whole file patch = one DIFF_CHUNK;
+  MAX_LLM_CHUNKS=5 caps *files*, and files 6+ are dropped silently.
+- Hash-embedding fallback (openai-client.ts:92) makes retrieval meaningless
+  without OPENAI_API_KEY, while still looking like it works.
+**Next**: (1) render `references` in formatters + UI, (2) attach retrieved
+sources to findings deterministically in AnalyzeStage, (3) real diff chunking +
+a marker when files are truncated, (4) stop swallowing LLM errors
+(llm-analyzer.ts:63).

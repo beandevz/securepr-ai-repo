@@ -471,3 +471,6 @@ textarea { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, 
   border-color: rgba(122, 162, 255, 0.5);
 }
 
+.queue {
+  margin-left: 10px;
+}

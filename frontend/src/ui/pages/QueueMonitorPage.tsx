@@ -31,7 +31,7 @@ export default function QueueMonitorPage() {
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 3000);
+    const interval = setInterval(fetchJobs, 60000);
     return () => clearInterval(interval);
   }, [apiBaseUrl]);
 
@@ -52,7 +52,7 @@ export default function QueueMonitorPage() {
   };
 
   return (
-    <div className="grid">
+    <div className="grid queue">
       <section className="card">
         <h2 className="h1">Queue Monitor</h2>
         <p className="p">
