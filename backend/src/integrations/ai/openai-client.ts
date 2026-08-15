@@ -5,6 +5,15 @@ function isOpenAIConfigured(): boolean {
   return !!settings.openaiApiKey;
 }
 
+/**
+ * True when embedTexts() will produce real semantic embeddings rather than the
+ * local hash fallback. Callers that rely on similarity (RAG retrieval) must
+ * check this — hash embeddings score essentially at random.
+ */
+export function isEmbeddingConfigured(): boolean {
+  return isOpenAIConfigured() && !!settings.openaiEmbeddingModel;
+}
+
 async function getClient() {
   const { OpenAI } = await import('openai');
   if (!settings.openaiApiKey) {

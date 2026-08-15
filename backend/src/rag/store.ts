@@ -105,24 +105,46 @@ export async function addChunks(
   saveDb(db);
 }
 
+/** A retrieved chunk plus the metadata needed to cite it back to its document. */
+export interface RagHit {
+  source: string;
+  text: string;
+  chunkIndex: number;
+  totalChunks: number;
+  score: number;
+}
+
 /**
  * Vector similarity search. Returns top-K results sorted by cosine score.
  */
-export async function search(queryEmb: number[], topK: number): Promise<Array<[string, string, number]>> {
+export async function search(queryEmb: number[], topK: number): Promise<RagHit[]> {
   await initDb();
   const db = await getDb();
-  const stmt = db.prepare('SELECT source, chunk_text, embedding FROM doc_chunks');
+  const stmt = db.prepare(
+    'SELECT source, chunk_text, embedding, chunk_index, total_chunks FROM doc_chunks'
+  );
 
-  const scored: Array<[string, string, number]> = [];
+  const scored: RagHit[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject() as { source: string; chunk_text: string; embedding: string };
+    const row = stmt.getAsObject() as {
+      source: string;
+      chunk_text: string;
+      embedding: string;
+      chunk_index: number;
+      total_chunks: number;
+    };
     const emb = JSON.parse(row.embedding) as number[];
-    const score = cosine(queryEmb, emb);
-    scored.push([row.source, row.chunk_text, score]);
+    scored.push({
+      source: row.source,
+      text: row.chunk_text,
+      chunkIndex: row.chunk_index ?? 0,
+      totalChunks: row.total_chunks ?? 1,
+      score: cosine(queryEmb, emb),
+    });
   }
   stmt.free();
 
-  scored.sort((a, b) => b[2] - a[2]);
+  scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, Math.max(topK, 1));
 }
 

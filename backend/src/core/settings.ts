@@ -23,6 +23,8 @@ export interface Settings {
   ragEnabled: boolean;
   ragDbPath: string;
   ragTopK: number;
+  ragMinScore: number;
+  ragAllowLocalEmbeddings: boolean;
   ragChunkSizeChars: number;
   ragChunkOverlapChars: number;
   openaiEmbeddingModel: string | undefined;
@@ -77,6 +79,12 @@ function loadSettings(): Settings {
     ragEnabled: (env.RAG_ENABLED || 'false').toLowerCase() === 'true',
     ragDbPath: env.RAG_DB_PATH || 'rag.db',
     ragTopK: parseInt(env.RAG_TOP_K || '4', 10),
+    // Cosine score below which a retrieved chunk is treated as irrelevant and
+    // dropped, so unrelated policy text never reaches the review prompt.
+    ragMinScore: parseFloat(env.RAG_MIN_SCORE || '0.30'),
+    // Hash-based local embeddings are deterministic but not semantic: retrieval
+    // on top of them is meaningless, so RAG stays off unless explicitly allowed.
+    ragAllowLocalEmbeddings: (env.RAG_ALLOW_LOCAL_EMBEDDINGS || 'false').toLowerCase() === 'true',
     ragChunkSizeChars: parseInt(env.RAG_CHUNK_SIZE_CHARS || '1200', 10),
     ragChunkOverlapChars: parseInt(env.RAG_CHUNK_OVERLAP_CHARS || '200', 10),
     openaiEmbeddingModel: env.OPENAI_EMBEDDING_MODEL || undefined,

@@ -48,7 +48,7 @@ export async function askWithRag(question: string, topK?: number): Promise<AskRe
   const [queryEmb] = await embedTexts([question]);
   const hits = await search(queryEmb, k);
 
-  const sources = hits.map(([source, text, score]) => ({ source, text, score }));
+  const sources = hits.map(h => ({ source: h.source, text: h.text, score: h.score }));
 
   // If no chunks found, return early
   if (sources.length === 0) {

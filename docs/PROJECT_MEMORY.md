@@ -515,3 +515,28 @@ to cite the source id in `references[]`.
 sources to findings deterministically in AnalyzeStage, (3) real diff chunking +
 a marker when files are truncated, (4) stop swallowing LLM errors
 (llm-analyzer.ts:63).
+
+### 2026-08-15: RAG hardening Phase 1 (retrieval foundation)
+**Current state**: `RagService.retrieve()` now returns a structured
+`RagContext { chunks, promptText, status }` instead of a flat string, and never
+throws — every failure degrades to an empty context plus a reason
+(`disabled | no_embedding_model | no_documents | no_relevant_docs | error`).
+`store.search()` returns `RagHit[]` with `chunkIndex/totalChunks`, so a chunk can
+be cited back to its document. Each retained chunk gets a server-assigned
+`refId` (R1, R2, …) — unused in the prompt yet, it is the anchor for Phase 2
+citations. `/health` and `/rag/stats` expose RAG health; `/rag/search` marks
+`above_min_score` per hit for threshold tuning.
+**Decisions**:
+- `RAG_MIN_SCORE=0.30` drops low-similarity chunks so unrelated policy text
+  cannot become "confirming evidence" (and stops burning prompt tokens).
+- Retrieval is skipped when embeddings would fall back to SHA-256 hashes, since
+  cosine over them is random; `RAG_ALLOW_LOCAL_EMBEDDINGS=true` overrides for dev.
+  Warning is logged once per process, not per file.
+- Ref ids are assigned server-side so a citation can never name a document that
+  was not actually retrieved.
+**Verification**: `npm run typecheck` clean; `npm test` 47 passed (8 new in
+`services/rag-service.test.ts`).
+**Next**: Phase 2 — label chunks as `[R1 | source=… | chunk i/n]` in the prompt,
+add `policy_refs` to the finding schema, resolve refs to `Finding.policy_sources`
+(dropping hallucinated ids), render the source in PR comments + UI. Then Phase 3
+(better retrieval query, multi-hunk retrieve, prompt-injection delimiters).

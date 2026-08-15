@@ -4,6 +4,7 @@ import { settings } from '../../core/settings.js';
 import { addChunks, search, listSources, deleteBySource, getStats } from '../../rag/store.js';
 import { chunkText } from '../../rag/chunker.js';
 import { askWithRag } from '../../rag/rag-llm.js';
+import { getRagHealth } from '../../services/rag-service.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -155,10 +156,15 @@ router.post('/rag/search', async (req: Request, res: Response) => {
       ok: true,
       query,
       top_k: topK,
-      hits: hits.map(([s, t, sc]) => ({
-        source: s,
-        score: sc,
-        text: t,
+      min_score: settings.ragMinScore,
+      hits: hits.map(h => ({
+        source: h.source,
+        score: h.score,
+        text: h.text,
+        chunk_index: h.chunkIndex,
+        total_chunks: h.totalChunks,
+        // Raw hits are returned for tuning; this flags which ones a review would keep.
+        above_min_score: h.score >= settings.ragMinScore,
       })),
     });
   } catch (err) {
@@ -227,7 +233,14 @@ router.get('/rag/stats', async (req: Request, res: Response) => {
   try {
     if (!requireRag(req, res)) return;
     const stats = await getStats();
-    res.json({ ok: true, ...stats });
+    const health = await getRagHealth();
+    res.json({
+      ok: true,
+      ...stats,
+      embedding: health.embedding,
+      top_k: health.top_k,
+      min_score: health.min_score,
+    });
   } catch (err) {
     console.error('RAG stats error:', err);
     res.status(500).json({ detail: `Internal server error: ${(err as Error).message}` });
