@@ -108,6 +108,35 @@ describe('RagService.retrieve', () => {
     expect(ctx.promptText).toContain('policy text from secure-coding.pdf');
   });
 
+  it('embeds every query and merges hits, keeping a chunk\'s best score', async () => {
+    search
+      .mockResolvedValueOnce([hit('secure-coding.pdf', 0.4, 1, 5), hit('api.md', 0.9)])
+      .mockResolvedValueOnce([hit('secure-coding.pdf', 0.8, 1, 5)]);
+
+    const ctx = await new RagService().retrieve(['hunk one', 'hunk two']);
+
+    expect(embedTexts).toHaveBeenCalledWith(['hunk one', 'hunk two']);
+    expect(ctx.chunks.map(c => [c.source, c.score])).toEqual([
+      ['api.md', 0.9],
+      ['secure-coding.pdf', 0.8],
+    ]);
+  });
+
+  it('keeps distinct chunks of the same document separate', async () => {
+    search.mockResolvedValue([hit('policy.pdf', 0.6, 0, 3), hit('policy.pdf', 0.5, 2, 3)]);
+
+    const ctx = await new RagService().retrieve(['q']);
+
+    expect(ctx.chunks.map(c => c.chunkIndex)).toEqual([0, 2]);
+  });
+
+  it('treats an all-blank query list as nothing to retrieve', async () => {
+    const ctx = await new RagService().retrieve(['   ', '']);
+
+    expect(ctx.status).toBe('no_relevant_docs');
+    expect(embedTexts).not.toHaveBeenCalled();
+  });
+
   it('degrades to an error status instead of throwing when search fails', async () => {
     search.mockRejectedValue(new Error('db locked'));
 

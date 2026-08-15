@@ -565,3 +565,30 @@ markdown inspected via a scratch script.
 **Next**: Phase 3 — retrieval query from added lines only, per-hunk retrieve +
 dedupe for long patches, nonce-delimited untrusted-data blocks for RAG/diff.
 Consider carrying citations into the Markdown/HTML exports (`ui/utils/export.ts`).
+
+### 2026-08-15: RAG hardening Phase 3 (query quality + prompt injection)
+**Current state**: Retrieval queries are built by `services/rag-query.ts`
+(`buildRagQueries`) instead of `patch.substring(0,1500)`: file path + language
+from the extension + security topics implied by the added code + the added lines
+only (context and deleted lines dropped). A file whose added code exceeds
+`RAG_QUERY_MAX_CHARS` (4000) is queried per hunk (max 4) rather than truncated;
+`RagService.retrieve` now accepts `string | string[]`, embeds all queries in one
+call and merges hits by `(source, chunkIndex)` keeping the best score.
+Prompt injection: RAG_CONTEXT and DIFF_CHUNK are fenced with per-request nonce
+markers (`<<<BEGIN_DIFF_CHUNK_<12 hex>>>>`), SYSTEM_PROMPT declares everything
+between them untrusted data and never instructions, and marker-lookalikes in
+document or diff text are rewritten to `<redacted-marker ` while the text itself
+stays reviewable.
+**Decisions**:
+- Only the fixed part of a marker needs defusing — the nonce is unguessable, so
+  content is not otherwise mangled (git conflict markers etc. survive intact).
+- Rule-analyzer hits are NOT used to seed the query (would force running the
+  analyzers before retrieval); a keyword table in rag-query.ts covers the same
+  intent without coupling the stages.
+**Verification**: `typecheck` clean; `npm test` 79 passed (18 new in
+rag-query/prompts + 3 merge tests). Rendered prompt inspected via scratch script.
+Fixed a Phase 2 slip: the llm-analyzer test mock failed `tsc --noEmit` (mock
+declared 0 params, called with 2) — tests passed, typecheck did not.
+**Next**: carry citations into `ui/utils/export.ts` (Markdown/HTML exports);
+consider real diff chunking so files 6+ are not dropped silently (MAX_LLM_CHUNKS
+caps files, not chunks); stop swallowing LLM errors (llm-analyzer.ts catch {}).

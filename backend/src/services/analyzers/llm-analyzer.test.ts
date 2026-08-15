@@ -3,7 +3,9 @@ import { settings } from '../../core/settings.js';
 import { LlmAnalyzer } from './llm-analyzer.js';
 import type { RagChunk, RagContext } from '../rag-service.js';
 
-const chatCompletionJson = vi.fn(async (): Promise<Record<string, unknown>> => ({ findings: [] }));
+const chatCompletionJson = vi.fn(
+  async (_system: string, _user: string): Promise<Record<string, unknown>> => ({ findings: [] })
+);
 
 vi.mock('../../integrations/ai/openai-client.js', () => ({
   chatCompletionJson: (system: string, user: string) => chatCompletionJson(system, user),

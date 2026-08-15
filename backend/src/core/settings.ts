@@ -25,6 +25,7 @@ export interface Settings {
   ragTopK: number;
   ragMinScore: number;
   ragAllowLocalEmbeddings: boolean;
+  ragQueryMaxChars: number;
   ragChunkSizeChars: number;
   ragChunkOverlapChars: number;
   openaiEmbeddingModel: string | undefined;
@@ -85,6 +86,9 @@ function loadSettings(): Settings {
     // Hash-based local embeddings are deterministic but not semantic: retrieval
     // on top of them is meaningless, so RAG stays off unless explicitly allowed.
     ragAllowLocalEmbeddings: (env.RAG_ALLOW_LOCAL_EMBEDDINGS || 'false').toLowerCase() === 'true',
+    // Longest retrieval query; a file whose added code exceeds this is queried
+    // per hunk instead of being truncated.
+    ragQueryMaxChars: parseInt(env.RAG_QUERY_MAX_CHARS || '4000', 10),
     ragChunkSizeChars: parseInt(env.RAG_CHUNK_SIZE_CHARS || '1200', 10),
     ragChunkOverlapChars: parseInt(env.RAG_CHUNK_OVERLAP_CHARS || '200', 10),
     openaiEmbeddingModel: env.OPENAI_EMBEDDING_MODEL || undefined,

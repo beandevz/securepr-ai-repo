@@ -1,6 +1,7 @@
 import { PipelineContext, PipelineStage } from '../base.js';
 import { createAnalyzers } from '../../analyzers/factory.js';
 import { RagService } from '../../rag-service.js';
+import { buildRagQueries } from '../../rag-query.js';
 
 /**
  * Stage 2: Run security analyzers on diff files.
@@ -20,8 +21,7 @@ export class AnalyzeStage implements PipelineStage {
       // Get RAG context. retrieve() never throws: when no relevant policy is
       // available it returns an empty context plus the reason, and the review
       // continues on general secure-coding knowledge.
-      const ragQuery = `${path}\n${patch.substring(0, 1500)}`;
-      const ragContext = await rag.retrieve(ragQuery);
+      const ragContext = await rag.retrieve(buildRagQueries(path, patch));
       context.ragStatuses.push(ragContext.status);
       if (ragContext.status !== 'ok') {
         console.log(`[RAG] No policy context for ${path} (${ragContext.status})`);

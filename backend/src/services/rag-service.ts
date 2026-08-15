@@ -1,5 +1,6 @@
 import { settings } from '../core/settings.js';
 import { PolicySource } from '../domain/models.js';
+import type { RagHit } from '../rag/store.js';
 
 /** Why a retrieval produced (or failed to produce) policy context. */
 export type RagStatus =
@@ -72,6 +73,28 @@ export function summarizeRagStatuses(statuses: RagStatus[]): RagStatus | undefin
   return statuses.includes('ok') ? 'ok' : statuses[0];
 }
 
+/**
+ * Merge per-query hit lists into one ranked list, keeping a chunk's best score
+ * so a chunk matched by several hunks is not counted (or cited) twice.
+ */
+function mergeHits(hitLists: RagHit[][], topK: number): RagHit[] {
+  const best = new Map<string, RagHit>();
+
+  for (const hits of hitLists) {
+    for (const hit of hits) {
+      const key = `${hit.source}#${hit.chunkIndex}`;
+      const existing = best.get(key);
+      if (!existing || hit.score > existing.score) {
+        best.set(key, hit);
+      }
+    }
+  }
+
+  return [...best.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(topK, 1));
+}
+
 /** Warn once per process instead of on every file of every PR. */
 let warnedLocalEmbeddings = false;
 
@@ -82,7 +105,12 @@ let warnedLocalEmbeddings = false;
  * explaining why, so a review is never blocked by the knowledge base.
  */
 export class RagService {
-  async retrieve(queryText: string): Promise<RagContext> {
+  /**
+   * @param queryText One query, or several (e.g. one per diff hunk) whose hits
+   *                  are merged: a chunk retrieved by more than one query keeps
+   *                  its best score.
+   */
+  async retrieve(queryText: string | string[]): Promise<RagContext> {
     if (!settings.ragEnabled) {
       return emptyRagContext('disabled');
     }
@@ -102,10 +130,16 @@ export class RagService {
       return emptyRagContext('no_embedding_model');
     }
 
+    const queries = (Array.isArray(queryText) ? queryText : [queryText]).filter(q => q.trim());
+    if (queries.length === 0) {
+      return emptyRagContext('no_relevant_docs');
+    }
+
     try {
       const { search } = await import('../rag/store.js');
-      const [queryEmb] = await embedTexts([queryText]);
-      const hits = await search(queryEmb, settings.ragTopK);
+      const embeddings = await embedTexts(queries);
+      const hitLists = await Promise.all(embeddings.map(emb => search(emb, settings.ragTopK)));
+      const hits = mergeHits(hitLists, settings.ragTopK);
 
       if (hits.length === 0) {
         return emptyRagContext('no_documents');
