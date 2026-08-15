@@ -43,6 +43,20 @@ export class IngestService {
   }
 
   /**
+   * Whether the payload describes a pull request that is no longer open.
+   *
+   * Only a positive signal counts: relayed payloads (GitHub Actions) may omit
+   * `state`, and treating "unknown" as closed would silently stop reviewing.
+   */
+  static isPullRequestClosed(payload: Record<string, unknown>): boolean {
+    const pr = (payload.pull_request as Record<string, unknown>) || {};
+    const state = typeof pr.state === 'string' ? pr.state.toLowerCase() : '';
+    const action = typeof payload.action === 'string' ? payload.action.toLowerCase() : '';
+
+    return state === 'closed' || action === 'closed' || pr.merged === true;
+  }
+
+  /**
    * Create GitHub check run or commit status if enabled.
    */
   static async createCheckRunIfEnabled(

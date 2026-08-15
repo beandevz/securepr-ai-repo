@@ -114,7 +114,7 @@ Keep each update ≤ 25 lines.
 **API Routes** (`src/api/routes/`):
 - `ingest.ts` - POST /ingest/github-actions (accepts native GitHub `X-Hub-Signature-256` or custom `X-SecurePR-Signature`; resolves the sending host from the payload and the per-repo token from `repos/store.ts`)
 - `health.ts` - GET /health
-- `jobs.ts` - GET /jobs, GET /jobs/:jobId, DELETE /jobs/:jobId
+- `jobs.ts` - GET /jobs (open PRs only; `?include_closed=true` for all), GET /jobs/:jobId, DELETE /jobs/:jobId
 - `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ingest
 - `github-status.ts` - GET /github/status/:owner/:repo/:sha
 - `repos.ts` - POST /repos (connect + auto-create webhook), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id

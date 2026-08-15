@@ -3,6 +3,7 @@ import { settings } from '../../core/settings.js';
 import { verifyHmacSha256, decryptSecret } from '../../core/security.js';
 import { IngestService } from '../../services/ingest-service.js';
 import { getRepoByOwnerName } from '../../repos/store.js';
+import { jobStore } from '../../queue/job-store.js';
 import {
   GITHUB_DOTCOM_HOST,
   apiBaseUrlForHost,
@@ -59,6 +60,14 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
       return;
     }
     const host = (payloadHost || GITHUB_DOTCOM_HOST).toLowerCase();
+
+    // Only open PRs are reviewed. A close/merge also retires this PR's earlier
+    // scans so they stop showing up in the scan list.
+    if (IngestService.isPullRequestClosed(payload)) {
+      const hidden = await jobStore.markPrClosed(owner, repoName, prNumber, host);
+      res.json({ ok: true, queued: false, skipped: 'pr_closed', hidden_scans: hidden });
+      return;
+    }
 
     // Get GitHub token: explicit header > stored token for this connected repo > global fallback
     let token = req.headers['x-securepr-github-token'] as string | undefined;

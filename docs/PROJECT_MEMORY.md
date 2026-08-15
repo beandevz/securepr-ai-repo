@@ -592,3 +592,27 @@ declared 0 params, called with 2) — tests passed, typecheck did not.
 **Next**: carry citations into `ui/utils/export.ts` (Markdown/HTML exports);
 consider real diff chunking so files 6+ are not dropped silently (MAX_LLM_CHUNKS
 caps files, not chunks); stop swallowing LLM errors (llm-analyzer.ts catch {}).
+
+### 2026-08-15: Scans limited to open PRs
+**Current state**: Closed/merged PRs are neither scanned nor listed.
+`IngestService.isPullRequestClosed(payload)` gates the webhook: on a positive
+close signal (`pull_request.state === 'closed'`, `action === 'closed'`, or
+`merged === true`) the request returns `{ ok, queued: false, skipped:
+'pr_closed', hidden_scans: n }` without creating a job, and calls
+`jobStore.markPrClosed(owner, repo, prNumber, host)` so that PR's earlier scans
+disappear from the list too. `jobs` table gained `pr_state` (default 'open',
+added via addColumnIfMissing so existing DBs upgrade in place); `jobStore.list()`
+returns open PRs only, `list({ includeClosed: true })` / `GET
+/jobs?include_closed=true` returns everything. A job whose PR closed while it sat
+in the queue is marked `skipped` instead of posting a review.
+**Decisions**:
+- Only a *positive* close signal counts — relayed GitHub Actions payloads may
+  omit `state`, and treating unknown as closed would silently stop all reviews.
+- Hide, don't delete: `GET /jobs/:jobId` still resolves, so existing result links
+  and the check-run details URL keep working after a merge.
+- Dashboard stats derive from `GET /jobs`, so they now count open PRs only.
+**Verification**: `typecheck` clean (backend + frontend); `npm test` 92 passed
+(13 new in queue/job-store.test.ts + services/ingest-service.test.ts).
+**Open**: scans recorded before this change stay visible until that PR's next
+webhook arrives — a closed PR that never gets another event keeps its old scans
+listed. A backfill would need to poll the GitHub API per PR.

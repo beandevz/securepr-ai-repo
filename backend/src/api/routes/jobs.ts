@@ -3,8 +3,10 @@ import { jobStore } from '../../queue/job-store.js';
 
 const router = Router();
 
-router.get('/jobs', async (_req: Request, res: Response) => {
-  res.json(await jobStore.list());
+// Scans of closed/merged PRs are hidden by default; ?include_closed=true shows them.
+router.get('/jobs', async (req: Request, res: Response) => {
+  const includeClosed = String(req.query.include_closed).toLowerCase() === 'true';
+  res.json(await jobStore.list({ includeClosed }));
 });
 
 router.get('/jobs/:jobId', async (req: Request, res: Response) => {
