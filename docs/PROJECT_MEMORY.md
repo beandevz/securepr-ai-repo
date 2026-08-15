@@ -616,3 +616,16 @@ in the queue is marked `skipped` instead of posting a review.
 **Open**: scans recorded before this change stay visible until that PR's next
 webhook arrives — a closed PR that never gets another event keeps its old scans
 listed. A backfill would need to poll the GitHub API per PR.
+
+### 2026-08-15: Bulk job delete endpoint
+**Current state**: `DELETE /jobs` clears the job store. It refuses without
+`?confirm=true` (400), and `?status=` / `?pr_state=` narrow it to one group
+(e.g. dropping failed runs, or scans of closed PRs). Returns
+`{ ok, deleted, filter }`. Backed by `jobStore.deleteAll({ status, prState })`,
+which builds the WHERE clause from the supplied filters and only persists when
+rows actually changed. Route order matters: `DELETE /jobs` is registered before
+`DELETE /jobs/:jobId`.
+**Why**: deleting every job previously meant looping `DELETE /jobs/:jobId` per id;
+the QueueMonitorPage "Clear" button only resets React state, it deletes nothing.
+**Verification**: `typecheck` clean; `npm test` 97 passed (5 new); smoke-tested
+against the running dev server — 400 without confirm, 200 with, filters applied.

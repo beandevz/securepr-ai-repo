@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -64,5 +64,45 @@ describe('JobStore PR state', () => {
 
   it('reports nothing hidden for a PR with no scans', async () => {
     expect(await jobStore.markPrClosed('acme', 'web', 999)).toBe(0);
+  });
+});
+
+describe('JobStore.deleteAll', () => {
+  beforeEach(async () => {
+    await jobStore.deleteAll();
+    await seed('job_a', 10);
+    await seed('job_b', 11);
+    await seed('job_c', 12);
+    await jobStore.setStatus('job_b', 'failed');
+    await jobStore.markPrClosed('acme', 'web', 12);
+  });
+
+  it('deletes everything and reports the count', async () => {
+    expect(await jobStore.deleteAll()).toBe(3);
+    expect(await jobStore.list({ includeClosed: true })).toEqual([]);
+  });
+
+  it('deletes only the matching status', async () => {
+    expect(await jobStore.deleteAll({ status: 'failed' })).toBe(1);
+
+    const ids = (await jobStore.list({ includeClosed: true })).map(j => j.id);
+    expect(ids.sort()).toEqual(['job_a', 'job_c']);
+  });
+
+  it('deletes only the matching PR state', async () => {
+    expect(await jobStore.deleteAll({ prState: 'closed' })).toBe(1);
+
+    const ids = (await jobStore.list({ includeClosed: true })).map(j => j.id);
+    expect(ids.sort()).toEqual(['job_a', 'job_b']);
+  });
+
+  it('combines filters', async () => {
+    expect(await jobStore.deleteAll({ status: 'failed', prState: 'closed' })).toBe(0);
+    expect(await jobStore.list({ includeClosed: true })).toHaveLength(3);
+  });
+
+  it('returns 0 on an empty store', async () => {
+    await jobStore.deleteAll();
+    expect(await jobStore.deleteAll()).toBe(0);
   });
 });

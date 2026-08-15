@@ -249,6 +249,32 @@ export class JobStore {
     return row ? toRecord(row) : null;
   }
 
+  /**
+   * Bulk delete, optionally narrowed to a status or PR state. Callers are
+   * responsible for confirming intent — an unfiltered call wipes the store.
+   */
+  async deleteAll(filter: { status?: string; prState?: string } = {}): Promise<number> {
+    await initDb();
+    const db = await getDb();
+
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (filter.status) {
+      conditions.push('status = ?');
+      params.push(filter.status);
+    }
+    if (filter.prState) {
+      conditions.push('pr_state = ?');
+      params.push(filter.prState);
+    }
+
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+    db.run(`DELETE FROM jobs${where}`, params);
+    const changes = db.getRowsModified();
+    if (changes > 0) saveDb(db);
+    return changes;
+  }
+
   async delete(jobId: string): Promise<boolean> {
     await initDb();
     const db = await getDb();
