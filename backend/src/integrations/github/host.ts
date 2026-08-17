@@ -39,18 +39,6 @@ export function assertAllowedHost(host: string): string {
   return normalized;
 }
 
-/**
- * Resolve an allow-listed host to its API base URL, falling back to github.com
- * for unknown hosts. Used on inbound paths (webhooks) where rejecting outright
- * would drop the event; the allow-list still decides where tokens may travel.
- */
-export function safeApiBaseUrl(host: string | undefined | null): string {
-  const normalized = normalizeHost(host || '');
-  return normalized && isAllowedHost(normalized)
-    ? apiBaseUrlForHost(normalized)
-    : GITHUB_DOTCOM_API;
-}
-
 const REPO_PATH_RE = /^\/?([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
 
 /**

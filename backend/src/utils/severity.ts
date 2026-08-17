@@ -28,13 +28,3 @@ export function getMaxSeverity(findings: Finding[]): string {
 export function shouldFailGate(overallSeverity: string, thresholdSeverity: string): boolean {
   return (SEV_ORDER[overallSeverity] ?? 0) >= (SEV_ORDER[thresholdSeverity] ?? 0);
 }
-
-/**
- * Sort findings by severity.
- */
-export function sortFindingsBySeverity(findings: Finding[], descending: boolean = true): Finding[] {
-  return [...findings].sort((a, b) => {
-    const diff = (SEV_ORDER[a.severity] ?? 0) - (SEV_ORDER[b.severity] ?? 0);
-    return descending ? -diff : diff;
-  });
-}

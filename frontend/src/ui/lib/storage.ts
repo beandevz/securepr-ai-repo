@@ -47,17 +47,3 @@ export function loadSettings(): AppSettings {
   }
   return { ...defaults };
 }
-
-/**
- * Save settings to localStorage.
- */
-export function saveSettings(settings: AppSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-}
-
-/**
- * Clear all stored settings (resets to .env defaults).
- */
-export function clearSettings(): void {
-  localStorage.removeItem(STORAGE_KEY);
-}

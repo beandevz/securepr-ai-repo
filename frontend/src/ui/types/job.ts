@@ -24,8 +24,3 @@ export type Job = {
   created_at?: string;
   updated_at?: string;
 };
-
-export type JobDetail = Job & {
-  patch?: string;
-  payload?: Record<string, any>;
-};

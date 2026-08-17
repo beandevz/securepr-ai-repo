@@ -1,438 +1,68 @@
 # PROJECT_MEMORY.md — SecurePR AI (Living Context for AI Assistants)
 
-## Current State (Updated: 2026-05-29)
+## Current State (Updated: 2026-08-17)
 
-### Backend Status
-**Architecture**: Fully refactored with SOLID principles + GoF patterns (Factory, Strategy, Pipeline, Singleton)
+> The 2026-05-29 snapshot that used to sit here described the original
+> Python/FastAPI codebase (`app/services/pipeline.py`, Pydantic settings,
+> Alembic, Terraform, `ui/hooks/`, `ui/lib/ApiClient.ts`). The backend was
+> rewritten in Node/TypeScript and none of those files exist. It was replaced
+> with the description below; the dated decision log further down is unchanged.
 
-**Working Components**:
-- ✅ Webhook ingest (`api/routes/ingest.py` → `services/ingest_service.py`)
-- ✅ Queue management (InProcQueue, ServiceBusQueue via `queue/manager.py`)
-- ✅ Pipeline orchestration (4 stages: Fetch → Analyze → Aggregate → Publish)
-- ✅ Strategy-based analyzers (RuleBasedAnalyzer, LlmAnalyzer)
-- ✅ Factory pattern for providers (LLM, Queue, VCS)
-- ✅ HTTP client resource management (singleton per token, connection pooling, retry)
-- ✅ GitHub integration (review comments, check runs, commit status)
-- ✅ RAG service (vector store retrieval)
-- ✅ Structured error handling (SecurePRError hierarchy)
+### Backend Status (Node.js/Express + TypeScript, ESM)
+**Working**:
+- ✅ Webhook ingest — `api/routes/ingest.ts` → `services/ingest-service.ts`;
+  HMAC verified over the raw body, `X-Hub-Signature-256` or `X-SecurePR-Signature`
+- ✅ Multi-host GitHub (github.com + GHES) via `integrations/github/host.ts`
+  allow-list (`GITHUB_ALLOWED_HOSTS`)
+- ✅ Queue — `queue/manager.ts` InProcQueue (setInterval poll); ServiceBusQueue
+  is still a placeholder
+- ✅ Persistent job store — `queue/job-store.ts`, sql.js at `JOBS_DB_PATH`,
+  `pr_state` column so closed PRs drop out of listings
+- ✅ 4-stage pipeline — FetchDiff → Analyze → Aggregate → Publish
+  (`services/pipeline/`), entry `pipeline-v2.ts:processJob(job)`
+- ✅ Strategy analyzers — RuleBasedAnalyzer, LlmAnalyzer (`services/analyzers/`)
+- ✅ RAG — sql.js vector store (`rag/store.ts`), relevance floor `RAG_MIN_SCORE`,
+  per-finding policy citations, local hash embeddings gated behind
+  `RAG_ALLOW_LOCAL_EMBEDDINGS`
+- ✅ Connected repos — `repos/store.ts`, PAT encrypted at rest (AES-256-GCM)
+- ✅ Error hierarchy — `SecurePRError` subclasses in `exceptions.ts`
 
-**Key Files**:
-- Entry: `app/services/pipeline_v2.py:process_job(job)`
-- Interfaces: `app/interfaces/{llm,queue,vcs,rag}_provider.py`
-- Factories: `app/factories/{llm,queue,vcs}_factory.py`
-- Analyzers: `app/services/analyzers/{base,rule_analyzer,llm_analyzer,factory}.py`
-- Pipeline: `app/services/pipeline/{base,orchestrator}.py` + `stages/{fetch_diff,analyze,aggregate,publish}.py`
-- Services: `app/services/ingest_service.py`
-- Integrations: `app/integrations/{http_client,github/{client,review_publisher,checks_publisher}}.py`
+**Key files**: entry `src/main.ts`; settings `src/core/settings.ts` (plain env,
+no schema validation); LLM/embeddings `integrations/ai/openai-client.ts`
+(OpenAI-compatible, `OPENAI_BASE_URL` retargets to Azure/self-hosted).
 
-**Configuration**: Settings in `app/core/config.py` (env-based, Pydantic validated)
+### Frontend Status (React 18 + TypeScript + Vite)
+**Working**: 6 routes in `ui/App.tsx` — `/` Dashboard, `/connect` ConnectRepo,
+`/queue` QueueMonitor, `/results/:jobId` ResultViewerEnhanced, `/github-pr/:jobId`
+GitHubPRView, `/rag` RagManager. Error boundaries wrap the tree.
 
-### Frontend Status
-**Architecture**: React + TypeScript, modular with hooks pattern
-
-**Working Components**:
-- ✅ Type organization (`ui/types/` - centralized, DRY)
-- ✅ API Client class (`ui/lib/ApiClient.ts`)
-- ✅ Business logic extraction (`ui/utils/`, `ui/hooks/`)
-- ✅ Component modularity (SplitDiffViewer: 563 lines → 120 lines)
-- ✅ Error boundaries (all routes wrapped)
-- ✅ Pages: Home, WebhookSimulator, QueueMonitor, ResultViewer, ChecksViewer, RagManager
-
-**Key Files**:
-- Entry: `ui/App.tsx` (routes, ErrorBoundary)
-- Types: `ui/types/index.ts` (exports all)
-- API: `ui/lib/ApiClient.ts`
-- Utils: `ui/utils/{severity,navigation,diffParser,diffBlocks,wordDiff}.ts`
-- Hooks: `ui/hooks/{useFindingNavigation,useJobFetch}.ts`
-- Components: `ui/components/{ErrorBoundary,SplitDiffViewer/,Nav,Pill,Card}.tsx`
+**Key files**: `ui/lib/api.ts` (`apiGet`/`apiPostJson` — functional, there is no
+ApiClient class), `ui/lib/storage.ts` (`loadSettings`), `ui/utils/export.ts`
+(JSON/CSV/Markdown/HTML), `ui/types/job.ts`. Pages hold their own view-model
+types; there is no central types barrel and no `ui/hooks/`.
 
 ### Infrastructure
-- ✅ Docker Compose for local dev (`docker-compose.yml`)
-- ✅ Dockerfiles: API, Worker, Frontend (`deployment/docker/`)
-- ✅ CI/CD: GitHub Actions (`.github/workflows/{ci,deploy-azure,deploy-aws}.yml`)
-- ✅ IaC: Terraform modules for Azure/AWS (`deployment/terraform/{azure,aws}/`)
+- ✅ `docker-compose.yml` (api + frontend, nginx proxies `/api`)
+- ✅ Dockerfiles in `deployment/docker/` — api, frontend, combined
+- ❌ No CI/CD workflows (`.github/` does not exist)
+- ❌ No IaC — the deployment guides describe manual/CLI steps, not Terraform
 - ✅ Deployment guides: `docs/DEPLOYMENT_{AZURE,AWS,COMPARISON}.md`
 
-### Documentation
-- ✅ `README.md` - Project overview with badges
-- ✅ `CONTRIBUTING.md` - Team collaboration guidelines
-- ✅ `SETUP_GITHUB.md` - GitHub setup instructions
-- ✅ `GETTING_STARTED.md` - Step-by-step setup guide
-- ✅ `CLAUDE.md` - AI assistant instructions (token-optimized)
-- ✅ `.github/copilot-instructions.md` - GitHub Copilot rules
-- ✅ `docs/AI_IMPLEMENTATION_GUIDE.md` - Claude/Copilot integration
+### Testing
+`npm test` in `backend/` — vitest, 97 tests across 8 files (job-store, chunker,
+llm-analyzer, ingest-service, prompts, rag-query, rag-service, formatters).
+No frontend tests, no integration test for the full pipeline.
 
 ### Known Issues / Not Implemented
-- ⚠️ No persistent job store (jobs exist only in queue/memory)
-- ⚠️ No database migrations (PostgreSQL schema not versioned)
-- ⚠️ No integration tests for full pipeline
-- ⚠️ No metrics/observability dashboard
-- ⚠️ RAG ingest management UI incomplete
-- ⚠️ Legacy `pipeline.py` still exists (deprecated, use `pipeline_v2.py`)
-
----
-
-## Recent Decisions (Why)
-
-### 2026-05-29: Complete architecture refactoring
-**Decision**: Applied SOLID + GoF patterns across backend and frontend  
-**Why**: Original codebase had tight coupling, global state, business logic in routes/components, 563-line monolithic components, no testability  
-**Impact**: 
-- Backend: 22 new files (interfaces, factories, analyzers, pipeline stages), 15 refactored files
-- Frontend: 20+ new files (types, utils, hooks, component modules), 8 refactored files
-- Maintainability: Each module <150 lines, clear separation of concerns
-- Extensibility: Add new analyzers/stages/providers by implementing protocols
-
-### 2026-05-29: Pipeline pattern for orchestration
-**Decision**: Replaced 138-line monolithic `process_job_legacy()` with 4-stage pipeline  
-**Why**: Monolithic function was untestable, hard to extend, mixed concerns  
-**Stages**: FetchDiffStage → AnalyzeStage → AggregateStage → PublishStage  
-**Benefits**: Each stage testable in isolation, easy to add/remove stages, clear data flow via PipelineContext
-
-### 2026-05-29: Strategy pattern for analyzers
-**Decision**: Pluggable analyzers via SecurityAnalyzer protocol  
-**Why**: Need to support multiple analysis methods (rules, LLM, future: ML models)  
-**Current**: RuleBasedAnalyzer (regex patterns), LlmAnalyzer (contextual reasoning)  
-**Future**: Easy to add SastAnalyzer, TaintAnalyzer, etc.
-
-### 2026-05-29: HTTP client resource management
-**Decision**: Singleton GitHubClient per token with connection pooling  
-**Why**: Creating new httpx.Client() per request caused resource exhaustion, no connection reuse  
-**Implementation**: `integrations/http_client.py` (base client) → `github/client.py` (singleton per token)  
-**Benefits**: Connection pooling, exponential backoff retry, proper timeout handling
-
-### 2026-05-29: Service layer extraction
-**Decision**: Moved business logic from routes to service classes  
-**Why**: Routes should only handle HTTP concerns (validation, response format)  
-**Example**: `ingest.py` 72 lines → 30 lines by extracting IngestService  
-**Pattern**: Route validates → calls service → returns response
-
-### 2026-05-29: Frontend type centralization
-**Decision**: All types in `ui/types/`, imported from `ui/types/index.ts`  
-**Why**: Inline types in components caused duplication, inconsistency with backend  
-**Benefits**: Single source of truth, easy to keep in sync with API schemas
-
-### 2026-05-29: Component modularity
-**Decision**: Break components >150 lines into folders with sub-components  
-**Why**: 563-line SplitDiffViewer was unmaintainable  
-**Result**: `SplitDiffViewer/` folder with index.tsx (120 lines) + DiffRow + DiffToolbar + CollapsedSection  
-**Pattern**: Reusable for other large components (future: ResultViewerPage)
-
----
-
-## Architecture Quick Reference (for AI context)
-
-### Backend Flow
-```
-GitHub Webhook → ingest.py → IngestService → Queue → pipeline_v2.py:process_job()
-  → PipelineOrchestrator.execute()
-    → FetchDiffStage (via VcsProvider)
-    → AnalyzeStage (via SecurityAnalyzer[])
-    → AggregateStage (severity calculation)
-    → PublishStage (GitHub review + check run)
-```
-
-### Backend Layers (Dependency Inversion)
-```
-API Routes (thin, HTTP-only)
-  ↓
-Service Layer (business logic)
-  ↓
-Factory Layer (provider creation)
-  ↓
-Interface Layer (protocols)
-  ↓
-Integration Layer (external systems: GitHub, LLM, Queue, RAG)
-```
-
-### Frontend Flow
-```
-User → Page Component → Hook (useApi, useFindingNavigation)
-  → ApiClient (class-based)
-    → Fetch API
-  → Utils (severityClass, diffParser, etc.)
-    → Pure functions
-  → Presentational Components (Pill, Card, etc.)
-```
-
-### Key Design Patterns Used
-- **Factory**: `create_llm_provider()`, `create_queue_provider()`, `create_vcs_provider()`, `create_analyzers()`
-- **Strategy**: SecurityAnalyzer (RuleBasedAnalyzer, LlmAnalyzer)
-- **Pipeline**: PipelineStage (FetchDiffStage, AnalyzeStage, AggregateStage, PublishStage)
-- **Singleton**: GitHubClient (per token), HTTPClient, LLM providers
-- **Adapter**: GitHubAdapter (implements VcsProvider for GitHub API)
-- **Protocol**: All `*Provider` interfaces (dependency inversion)
-
----
-
-## File Organization (for navigation)
-
-### Backend Critical Paths
-- **Pipeline entry**: `app/services/pipeline_v2.py`
-- **Orchestrator**: `app/services/pipeline/orchestrator.py`
-- **Analyzers**: `app/services/analyzers/factory.py` (registration point)
-- **Services**: `app/services/ingest_service.py` (webhook logic)
-- **Factories**: `app/factories/{llm,queue,vcs}_factory.py` (provider creation)
-- **Integrations**: `app/integrations/github/client.py` (GitHub API client)
-
-### Frontend Critical Paths
-- **App entry**: `ui/App.tsx` (routing, ErrorBoundary)
-- **Type index**: `ui/types/index.ts` (import from here)
-- **API client**: `ui/lib/ApiClient.ts` (all API calls)
-- **Main pages**: `ui/pages/{QueueMonitor,ResultViewer,WebhookSimulator}Page.tsx`
-- **Key hooks**: `ui/hooks/useFindingNavigation.ts`
-- **Key utils**: `ui/utils/{severity,diffParser}.ts`
-
----
-
-## Next Actions (Priority)
-
-### High Priority
-1. **Add integration tests** for full pipeline (webhook → queue → analysis → GitHub publish)
-2. **Implement persistent job store** (PostgreSQL table for jobs, add API endpoints)
-3. **Add database migrations** (Alembic for schema versioning)
-4. **Remove deprecated code** (`app/services/pipeline.py:process_job_legacy`, `ui/lib/api.ts` functional API)
-
-### Medium Priority
-5. **Add metrics/observability** (Prometheus metrics, structured logging, dashboard)
-6. **Complete RAG management UI** (upload/delete/list sources, search interface)
-7. **Add unit tests** for analyzers (RuleBasedAnalyzer patterns, LlmAnalyzer mocking)
-8. **Add check run annotations** (file + line annotations for GitHub Checks)
-
-### Low Priority
-9. **Support GitLab/Azure DevOps** (implement VcsProvider adapters)
-10. **Add ML-based analyzer** (train model on vulnerability dataset, implement as MlAnalyzer)
-11. **Add rate limiting** (for webhook endpoint, LLM calls)
-12. **Add caching layer** (Redis for RAG results, LLM responses)
-
----
-
-## Common Tasks (How To)
-
-### Add a new security detection rule
-1. Edit `app/services/analyzers/rule_analyzer.py`
-2. Add pattern to `PATTERNS` dict: `"rule_name": {"pattern": r"...", "severity": "HIGH", "message": "..."}`
-3. Rule automatically active (no registration needed)
-
-### Add a new analyzer type (e.g., SAST integration)
-1. Create `app/services/analyzers/sast_analyzer.py`
-2. Implement `SecurityAnalyzer` protocol (analyze, get_name)
-3. Register in `app/services/analyzers/factory.py:create_analyzers()`:
-   ```python
-   if settings.sast_enabled:
-       analyzers.append(SastAnalyzer())
-   ```
-
-### Add a new pipeline stage (e.g., post-processing)
-1. Create `app/services/pipeline/stages/post_process.py`
-2. Implement `PipelineStage` protocol (execute, get_name)
-3. Add to `app/services/pipeline/orchestrator.py:__init__`:
-   ```python
-   self.stages = [FetchDiffStage(), AnalyzeStage(), AggregateStage(), PostProcessStage(), PublishStage()]
-   ```
-
-### Add a new VCS provider (e.g., GitLab)
-1. Create `app/integrations/gitlab/adapter.py`
-2. Implement `VcsProvider` protocol (fetch_files, create_review, post_comment, update_check_run)
-3. Register in `app/factories/vcs_factory.py:create_vcs_provider()`:
-   ```python
-   if vcs_type == 'gitlab':
-       return GitLabAdapter(token)
-   ```
-4. Update `app/core/config.py` with `vcs_provider` setting
-
-### Add a new frontend page
-1. Create `ui/pages/MyPage.tsx`
-2. Add types to `ui/types/my.ts` if needed
-3. Use `ApiClient` for API calls:
-   ```typescript
-   const client = new ApiClient('/api');
-   const data = await client.getMyData();
-   ```
-4. Add route in `ui/App.tsx`:
-   ```typescript
-   <Route path="/my-page" element={<MyPage />} />
-   ```
-
-### Debug pipeline execution
-1. Check logs for stage failures: `PipelineError: Stage X failed`
-2. Inspect `PipelineContext.metadata` for stage outputs
-3. Each stage returns context, so data flows: Fetch → files → Analyze → findings → Aggregate → severity → Publish
-4. Use `logger.info(f"Stage {name}: {context}")` in stages
-
----
-
-## Token Optimization Strategies (for AI sessions)
-
-### Context References (use instead of re-explaining)
-- **Architecture**: "See Backend Layers §Architecture Quick Reference"
-- **Pipeline**: "See Backend Flow §Architecture Quick Reference"
-- **Patterns**: "Uses Factory pattern (CLAUDE.md §6)"
-- **File location**: Reference `ingest_service.py:validate_github_payload` not full code
-
-### Diff Format (show only changes)
-```diff
-# ✅ DO
-+ from app.factories.llm_factory import create_llm_provider
-- from app.integrations.ai.azure_openai_client import AzureOpenAIClient
-
-# ❌ DON'T paste full file (50 lines)
-```
-
-### Structured Summaries (bullets > prose)
-```markdown
-# ✅ DO
-**Changes**:
-- Added SecurityAnalyzer protocol
-- Extracted RuleBasedAnalyzer
-- Registered in factory
-
-# ❌ DON'T
-"I have added a new security analyzer protocol which defines the interface
-for all analyzers. Then I extracted the rule-based analyzer into its own
-file and registered it in the factory so that it can be used..." (50 words)
-```
-
-### Type References (link, don't redefine)
-```markdown
-# ✅ DO
-Returns `Job` (see `ui/types/job.ts`)
-
-# ❌ DON'T
-Returns a Job object with fields: job_id (string), owner (string),
-repo (string), pr_number (number), ... (20 fields)
-```
-
----
-
-## Risks / Open Questions
-
-### Risk: Legacy pipeline code still active
-- `app/services/pipeline.py:process_job_legacy()` still exists
-- Worker may still call it (check `app/worker.py`)
-- **Action**: Verify worker uses `pipeline_v2.py:process_job()`, remove legacy code
-
-### Risk: No database schema versioning
-- PostgreSQL schema changes not tracked (no Alembic migrations)
-- Risk of schema drift between environments
-- **Action**: Initialize Alembic, create initial migration from current schema
-
-### Risk: No persistent job store
-- Jobs only exist in queue/memory
-- Cannot query job history, no audit trail
-- **Action**: Add `jobs` table (PostgreSQL), update pipeline to persist results
-
-### Risk: Type alignment between frontend/backend
-- Frontend types manually defined, may drift from Pydantic schemas
-- **Action**: Consider generating TypeScript types from Pydantic (e.g., pydantic-to-typescript)
-
-### Question: Should we version the API?
-- Current: `/api/jobs`, `/api/webhook`
-- Future: `/api/v1/jobs`, `/api/v2/jobs`?
-- **Consider**: API versioning strategy before adding breaking changes
-
-### Question: How to handle large PRs (>1000 files)?
-- Current: `settings.max_llm_chunks` limits files processed
-- Risk: Miss vulnerabilities in files beyond limit
-- **Consider**: Parallel processing, chunking strategy, priority-based file selection
-
----
-
-## Verification Commands (for testing)
-
-### Backend
-```bash
-# Run all tests (if any)
-pytest
-
-# Start API server
-uvicorn app.main:app --reload --port 8000
-
-# Test webhook endpoint
-curl -X POST http://localhost:8000/api/webhook \
-  -H "Content-Type: application/json" \
-  -d @tests/fixtures/github_webhook.json
-
-# Check health
-curl http://localhost:8000/api/health
-```
-
-### Frontend
-```bash
-# Install dependencies
-npm install
-
-# Run dev server
-npm run dev
-
-# Type check
-npm run type-check
-
-# Build
-npm run build
-```
-
-### Docker
-```bash
-# Build all services
-docker-compose build
-
-# Start all services
-docker-compose up
-
-# Verify services
-curl http://localhost:8000/api/health  # backend
-curl http://localhost:5173             # frontend
-```
-
----
-
-## Context for Claude/Copilot (token-efficient prompts)
-
-### When asked to add a feature
-**Provide**:
-- Feature name + purpose (1 line)
-- Files to change (list)
-- Which pattern to use (Factory/Strategy/Pipeline/etc.)
-- Integration points (which protocol to implement)
-
-**Example**:
-```
-Add SAST analyzer integration
-- Purpose: Run Semgrep on PR diff, add findings to pipeline
-- Files: analyzers/sast_analyzer.py (new), analyzers/factory.py (register)
-- Pattern: Strategy (implement SecurityAnalyzer protocol)
-- Integration: Call Semgrep CLI, parse JSON output, convert to Finding[]
-```
-
-### When asked to debug an issue
-**Provide**:
-- Error message (exact)
-- File + line number
-- Recent changes (if any)
-- Expected vs actual behavior
-
-**Example**:
-```
-Error: PipelineError: Stage AnalyzeStage failed: 'NoneType' object has no attribute 'review'
-File: pipeline/stages/analyze.py:15
-Recent: Refactored LlmService to LlmAnalyzer (factory pattern)
-Expected: LlmAnalyzer.analyze() returns Finding[]
-Actual: analyzer is None (factory not creating instance)
-```
-
-### When asked to review code
-**Provide**:
-- File path only (not full code)
-- Specific concerns (security, performance, maintainability)
-- Context (part of which feature/refactor)
-
-**Example**:
-```
-Review ingest_service.py:validate_github_payload
-Concerns: Security (payload validation), error handling
-Context: Extracted from ingest.py route (service layer refactor)
-```
+- ⚠️ No integration tests for the full pipeline (webhook → publish)
+- ⚠️ No metrics/observability; audit logging is `console.log` only
+- ⚠️ `ServiceBusQueue` is a placeholder — only `inproc` actually runs
+- ⚠️ `MAX_LLM_CHUNKS` caps *files*, not chunks; files past the cap are dropped
+  silently with no real diff chunking
+- ⚠️ `llm-analyzer.ts` swallows LLM errors in a bare `catch {}`
+- ⚠️ Scans recorded before the open-PR filter stay visible until that PR's next
+  webhook arrives
+- ⚠️ No `LICENSE` file despite README claiming MIT
 
 ---
 
@@ -629,3 +259,30 @@ rows actually changed. Route order matters: `DELETE /jobs` is registered before
 the QueueMonitorPage "Clear" button only resets React state, it deletes nothing.
 **Verification**: `typecheck` clean; `npm test` 97 passed (5 new); smoke-tested
 against the running dev server — 400 without confirm, 200 with, filters applied.
+
+### 2026-08-17: Repo cleanup — dead code, stale docs, git hygiene
+**Current state**: Tracked file count 7094 → 118. `node_modules` (6967 files),
+`*.db`, `frontend/dist`, `frontend/.env`, `tsconfig.tsbuildinfo` and an orphan
+root `package-lock.json` (no root `package.json`) were untracked; `.gitignore`
+went from one line to a real ignore set. Dead code removed: backend
+`sortFindingsBySeverity`, `getChunkCount`, `resetQueueInstance`,
+`safeApiBaseUrl`, `touchLastSync`; frontend `ui/utils/navigation.ts` (whole
+file, zero importers), `saveSettings`/`clearSettings`, `exportForJira`/
+`copyForJira`, `JobDetail`, `VITE_USE_MOCK_API`. Deleted `backend/kb/` (no code
+reads it) and the Python-era `docs/AI_IMPLEMENTATION_GUIDE.md` +
+`docs/UI_UX_GUIDE.md`. Rewrote `docs/RAG_SETUP.md` against the real HTTP API,
+ported WEBHOOK_GUIDE.md's Python samples to the actual TypeScript, fixed five
+broken README links and the `AZURE_OPENAI_*` env blocks in README /
+GETTING_STARTED / SETUP_GITHUB / docker-compose (settings.ts never read them).
+**Decisions**:
+- `git rm --cached` only — files stay on disk and history keeps the 72MB, so
+  nothing is destroyed; a history rewrite would break every open clone.
+- `client.ts` held a literal NUL byte as a Map-key separator, which made git and
+  every grep treat the file as binary and skip it entirely. Replaced with the
+  `\u0000` escape: identical runtime value, file is plain text again.
+- PROJECT_MEMORY's "Current State" preamble described the Python/FastAPI
+  codebase. Rewrote it; left every dated entry untouched.
+**Verification**: backend typecheck clean, `npm test` 97 passed; frontend
+`tsc -b` clean; no broken markdown links repo-wide.
+**Open**: no `LICENSE` file; `docs/DEPLOYMENT_COMPARISON.md` and
+`docs/REVIEW_BATCH.md` (3 lines) have no referrers and were left in place.

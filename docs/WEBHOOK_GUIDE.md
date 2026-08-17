@@ -234,34 +234,38 @@ async function connectRepo(repoUrl: string, token: string) {
 }
 ```
 
-**Backend implementation:**
-```python
-# backend/app/api/routes/repos.py
-@router.post('/connect')
-async def connect_repo(repo_data: RepoConnectionRequest):
-    # 1. Extract owner/repo from URL
-    owner, repo = parse_github_url(repo_data.repo_url)
-    
-    # 2. Create webhook via GitHub API
-    webhook = await github_client.create_webhook(
-        owner=owner,
-        repo=repo,
-        token=repo_data.token,
-        url=f"{settings.webhook_base_url}/ingest/github-actions",
-        secret=settings.webhook_secret,
-        events=["pull_request", "pull_request_review"]
-    )
-    
-    # 3. Store in database
-    db.repos.insert({
-        'owner': owner,
-        'repo': repo,
-        'webhook_id': webhook['id'],
-        'webhook_secret': settings.webhook_secret,
-        'token': repo_data.token  # encrypted
-    })
-    
-    return {'webhook_id': webhook['id'], 'configured': True}
+**Backend implementation** — `POST /repos` in `api/routes/repos.ts` delegates to
+`services/repo-service.ts:connectRepo`:
+
+```typescript
+export async function connectRepo(repoUrl: string, githubToken: string): Promise<ConnectedRepoSafe> {
+  // 1. Parse host + owner/name; the host is checked against GITHUB_ALLOWED_HOSTS
+  //    so a token can never be sent to an unapproved GitHub instance.
+  const { host, owner, name } = parseRepoUrl(repoUrl);
+  const apiBaseUrl = apiBaseUrlForHost(host);
+
+  // 2. Prove the token actually works before storing it.
+  const client = new RepoWebhookClient(githubToken, apiBaseUrl);
+  await client.getRepo(owner, name);
+
+  // 3. Persist. The PAT is AES-256-GCM encrypted (core/security.ts:encryptSecret)
+  //    so plaintext never touches disk.
+  let repo = await repoStore.insertRepo({
+    owner, name, url: repoUrl, host,
+    encryptedToken: encryptSecret(githubToken),
+  });
+
+  // 4. Best-effort webhook creation against PUBLIC_BASE_URL. A failure here is
+  //    logged, not fatal — the repo stays connected and can be wired up later
+  //    via POST /repos/:id/webhook.
+  const targetUrl = webhookTargetUrl();
+  if (targetUrl) {
+    const webhookId = await ensureWebhook(client, owner, name, targetUrl);
+    repo = (await repoStore.setWebhook(repo.id, webhookId)) || repo;
+  }
+
+  return repo;
+}
 ```
 
 ---
@@ -290,55 +294,64 @@ GitHub → Real webhook (valid HMAC signature)
 
 ### How HMAC-SHA256 Works
 
-```python
-# GitHub generates signature
-secret = "your-webhook-secret"
-payload = '{"action": "opened", ...}'
-signature = hmac.sha256(secret, payload).hexdigest()
-# signature = "sha256=abc123def456..."
+GitHub HMACs the **raw request body** with the shared secret and sends the digest
+as a header:
 
-# Sends in header:
-# X-Hub-Signature-256: sha256=abc123def456...
-
-# SecurePR AI verifies
-def verify_signature(secret, payload, received_signature):
-    expected = "sha256=" + hmac.sha256(secret, payload).hexdigest()
-    return hmac.compare_digest(expected, received_signature)
-    # compare_digest prevents timing attacks
 ```
+X-Hub-Signature-256: sha256=abc123def456...
+```
+
+SecurePR recomputes that digest and compares it in constant time. A plain `===`
+would leak the expected digest one byte at a time through response timing, so
+the comparison must be timing-safe.
 
 ### Current Implementation
 
-```python
-# backend/app/core/security.py
-import hmac
-import hashlib
+```typescript
+// backend/src/core/security.ts
+export function verifyHmacSha256(
+  secret: string,
+  rawBody: Buffer,
+  signature: string | undefined
+): boolean {
+  if (!signature || !signature.startsWith('sha256=')) {
+    return false;
+  }
+  const theirs = signature.split('sha256=')[1]?.trim() || '';
+  const ours = computeHmacSha256(secret, rawBody);
 
-def verify_hmac_sha256(secret: str, body: bytes, signature: str | None) -> bool:
-    """Verify GitHub webhook signature."""
-    if not signature:
-        return False
-    
-    # Compute expected signature
-    mac = hmac.new(secret.encode(), body, hashlib.sha256)
-    expected = "sha256=" + mac.hexdigest()
-    
-    # Timing-safe comparison
-    return hmac.compare_digest(expected, signature)
+  try {
+    return crypto.timingSafeEqual(Buffer.from(ours, 'hex'), Buffer.from(theirs, 'hex'));
+  } catch {
+    // Length mismatch or non-hex input — timingSafeEqual throws rather than
+    // returning false, so a malformed signature is rejected here.
+    return false;
+  }
+}
+```
 
-# backend/app/api/routes/ingest.py
-@router.post('/github-actions')
-async def ingest_github_actions(
-    req: Request,
-    x_securepr_signature: str | None = Header(default=None)
-):
-    raw = await req.body()
-    
-    # Verify signature
-    if not verify_hmac_sha256(settings.securepr_ingest_secret, raw, x_securepr_signature):
-        raise HTTPException(status_code=401, detail='Invalid signature')
-    
-    # Continue processing...
+```typescript
+// backend/src/api/routes/ingest.ts
+router.post('/ingest/github-actions', async (req, res) => {
+  // main.ts captures req.rawBody before JSON parsing — the HMAC must be
+  // computed over the exact bytes GitHub signed, not a re-serialized object.
+  const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
+  if (!rawBody) {
+    res.status(400).json({ detail: 'Missing raw body' });
+    return;
+  }
+
+  // Native GitHub webhooks sign with X-Hub-Signature-256; the GitHub Actions
+  // relay path signs with X-SecurePR-Signature.
+  const signature = (req.headers['x-hub-signature-256'] ||
+                     req.headers['x-securepr-signature']) as string | undefined;
+  if (!verifyHmacSha256(settings.securePrIngestSecret, rawBody, signature)) {
+    res.status(401).json({ detail: 'Invalid signature' });
+    return;
+  }
+
+  // ... validate payload, resolve host, enqueue job
+});
 ```
 
 ---
@@ -391,15 +404,22 @@ async def ingest_github_actions(
 
 ### What SecurePR AI Extracts
 
-```python
-# From payload
-owner = payload['repository']['owner']['login']  # "myorg"
-repo_name = payload['repository']['name']         # "api-service"
-pr_number = payload['pull_request']['number']    # 456
-head_sha = payload['pull_request']['head']['sha'] # "abc123..."
-author = payload['pull_request']['user']['login'] # "jsmith"
-title = payload['pull_request']['title']          # "Add user login..."
+`IngestService.validateGithubPayload` (`services/ingest-service.ts`) pulls out
+the four fields the pipeline needs, and throws `ValidationError` if any is
+missing — a malformed payload is rejected with 400 rather than queued:
+
+```typescript
+const [owner, repoName, prNumber, headSha] =
+  IngestService.validateGithubPayload(payload);
+
+// owner     ← repository.full_name.split('/')[0]   e.g. "myorg"
+// repoName  ← repository.full_name.split('/')[1]   e.g. "api-service"
+// prNumber  ← pull_request.number ?? payload.number  e.g. 456
+// headSha   ← pull_request.head.sha                  e.g. "abc123..."
 ```
+
+The sending host is resolved separately, from `X-SecurePR-GitHub-Host` or the
+repository URLs in the payload, and checked against `GITHUB_ALLOWED_HOSTS`.
 
 ---
 
@@ -617,22 +637,18 @@ curl -X POST https://your-app.com/ingest/github-actions \
 - Always returns `401 Unauthorized`
 - Error: "Invalid signature"
 
-**Check:**
-```python
-# Print received vs expected signature
-@router.post('/github-actions')
-async def ingest_github_actions(req: Request, x_hub_signature_256: str | None = Header(default=None)):
-    raw = await req.body()
-    expected = "sha256=" + hmac.new(
-        settings.webhook_secret.encode(),
-        raw,
-        hashlib.sha256
-    ).hexdigest()
-    
-    print(f"Received: {x_hub_signature_256}")
-    print(f"Expected: {expected}")
-    # Should match exactly
+**Check** — compute the expected digest over the same bytes and compare by hand:
+
+```typescript
+// Temporary debug inside the route, before verifyHmacSha256:
+const expected = 'sha256=' + computeHmacSha256(settings.securePrIngestSecret, rawBody);
+console.log('Received:', req.headers['x-hub-signature-256']);
+console.log('Expected:', expected);
 ```
+
+The most common cause is hashing the wrong bytes: `req.body` is the *parsed*
+object, and re-serializing it will not reproduce GitHub's payload byte-for-byte.
+`main.ts` stores the untouched buffer on `req.rawBody` for exactly this reason.
 
 **Solutions:**
 - Verify webhook secret matches in:
@@ -648,34 +664,34 @@ async def ingest_github_actions(req: Request, x_hub_signature_256: str | None = 
 - Takes > 10 seconds to respond
 
 **Problem:**
-```python
-# ❌ BAD - Doing heavy work in webhook handler
-@router.post('/github-actions')
-async def ingest(payload):
-    verify_signature()
-    
-    # This is TOO SLOW (can take 30+ seconds)
-    diff = fetch_diff_from_github()
-    findings = run_llm_analysis(diff)
-    post_results_to_github(findings)
-    
-    return {"ok": True}  # Too late - GitHub already timed out!
+```typescript
+// ❌ BAD - heavy work inside the webhook handler
+router.post('/ingest/github-actions', async (req, res) => {
+  verifySignature(req);
+
+  // Far too slow — diff fetch + LLM analysis can take 30+ seconds
+  const diff = await fetchDiff();
+  const findings = await runLlmAnalysis(diff);
+  await postResults(findings);
+
+  res.json({ ok: true }); // Too late; GitHub already timed out
+});
 ```
 
-**Solution:**
-```python
-# ✅ GOOD - Queue and return immediately
-@router.post('/github-actions')
-async def ingest(payload):
-    verify_signature()
-    
-    # Fast operations only (< 1 second)
-    job = create_job(payload)
-    await queue.enqueue(job)
-    
-    return {"ok": True, "job_id": job.id}  # Returns in < 1 second
-    
-# Background worker picks up job and does heavy work
+**Solution** — this is what the route actually does:
+```typescript
+// ✅ GOOD - enqueue and return immediately
+router.post('/ingest/github-actions', async (req, res) => {
+  verifySignature(req);
+
+  // Fast path only: validate, create the job row, enqueue.
+  const job = await IngestService.createJob(...);
+  await IngestService.enqueueJob(job);
+
+  res.json({ ok: true, queued: true, job_id: job.id });
+});
+
+// InProcQueue (queue/manager.ts) polls and runs the pipeline off the request path.
 ```
 
 ### Issue 4: Check Run Not Appearing
@@ -683,74 +699,63 @@ async def ingest(payload):
 **Symptoms:**
 - Scan completes but no check shows in GitHub PR
 
-**Check:**
-```python
-# Verify GitHub token has correct permissions
-# Token needs: repo, checks:write
+**Check** — try to create the check run directly:
 
-# Test check run creation
-response = requests.post(
-    f"https://api.github.com/repos/{owner}/{repo}/check-runs",
-    headers={
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github.v3+json"
-    },
-    json={
-        "name": "SecurePR AI",
-        "head_sha": head_sha,
-        "status": "in_progress"
-    }
-)
-print(response.status_code, response.json())
+```bash
+curl -i -X POST "https://api.github.com/repos/$OWNER/$REPO/check-runs" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -d '{"name":"SecurePR AI","head_sha":"'"$HEAD_SHA"'","status":"in_progress"}'
 ```
 
 **Solutions:**
-- Regenerate GitHub token with `checks:write` permission
-- Use GitHub App instead of Personal Access Token (recommended)
-- Check rate limits: `curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/rate_limit`
+- A 403 here is expected with a PAT: `POST /check-runs` is **GitHub App-only**,
+  so no PAT scope will make it work. Either install a GitHub App and use its
+  installation token, or set `STATUS_REPORTING_MODE=commit_status`, which uses
+  the commit status API and works with a PAT. See
+  [CHECK_RUN_STATUS.md](./CHECK_RUN_STATUS.md).
+- Check rate limits: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit`
 
 ---
 
 ## 🎯 Best Practices
 
 ### 1. Always Validate Signatures
-```python
-# NEVER skip signature validation in production
-if not settings.debug_mode:
-    if not verify_signature(...):
-        raise HTTPException(401)
+There is no debug bypass, and there should not be one — an unsigned path is an
+open door for forged findings. Verification is unconditional:
+```typescript
+if (!verifyHmacSha256(settings.securePrIngestSecret, rawBody, signature)) {
+  res.status(401).json({ detail: 'Invalid signature' });
+  return;
+}
 ```
 
 ### 2. Return Quickly (< 10 seconds)
-```python
-# Queue heavy work, don't block webhook response
-job = create_job(payload)
-await queue.enqueue(job)  # Async, non-blocking
-return {"queued": True}   # Fast response
+```typescript
+const job = await IngestService.createJob(...);
+await IngestService.enqueueJob(job);   // hands off to the queue
+res.json({ ok: true, queued: true });  // responds in well under a second
 ```
 
 ### 3. Use Idempotency Keys
-```python
-# Avoid duplicate processing if webhook retries
-job_id = f"{owner}-{repo}-{pr_number}-{head_sha}"
-if await queue.exists(job_id):
-    return {"already_queued": True, "job_id": job_id}
+GitHub retries deliveries, so key on the commit rather than the delivery:
+```typescript
+// (owner, repo, pr_number, head_sha) identifies the work uniquely —
+// a redelivery for the same head SHA should not queue a second scan.
+const key = `${owner}/${repo}#${prNumber}@${headSha}`;
 ```
 
 ### 4. Log Everything
-```python
-logger.info(f"Webhook received: {owner}/{repo} PR#{pr_number}")
-logger.info(f"Job queued: {job_id}")
-logger.error(f"Signature mismatch: {x_hub_signature_256}")
+```typescript
+console.log(`Webhook received: ${owner}/${repo} PR#${prNumber}`);
+console.log(`Job queued: ${job.id}`);
+console.error('Signature mismatch');  // never log the signature or the secret
 ```
 
 ### 5. Monitor Webhook Health
-```python
-# Track metrics
-metrics.increment('webhooks.received')
-metrics.increment('webhooks.signature_valid')
-metrics.timing('webhook.response_time', duration_ms)
-```
+Not yet implemented — there is no metrics backend wired up. The table below is
+the target shape if you add one.
 
 ---
 

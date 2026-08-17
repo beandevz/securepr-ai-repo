@@ -219,16 +219,3 @@ export async function getStats(): Promise<{
     db_size_bytes: dbSize,
   };
 }
-
-/**
- * Get total chunk count.
- */
-export async function getChunkCount(): Promise<number> {
-  await initDb();
-  const db = await getDb();
-  const stmt = db.prepare('SELECT COUNT(*) as cnt FROM doc_chunks');
-  stmt.step();
-  const cnt = (stmt.getAsObject() as { cnt: number }).cnt;
-  stmt.free();
-  return cnt;
-}

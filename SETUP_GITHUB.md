@@ -101,11 +101,11 @@ Value: {
   "tenantId": "xxx"
 }
 
-Name: AZURE_OPENAI_KEY
-Value: your-azure-openai-key
+Name: OPENAI_API_KEY
+Value: your-llm-api-key
 
-Name: AZURE_OPENAI_ENDPOINT
-Value: https://your-resource.openai.azure.com
+Name: OPENAI_BASE_URL
+Value: https://your-resource.openai.azure.com/openai/v1
 ```
 
 **For AWS Deployment**:
@@ -211,7 +211,7 @@ Welcome to SecurePR AI! 🎉
 - 📚 README: https://github.com/YOUR_ORG/securepr-ai-repo
 - 💬 Slack: #securepr-ai
 - 📝 Docs: https://github.com/YOUR_ORG/securepr-ai-repo/tree/main/docs
-- 🤖 AI Guide: docs/AI_IMPLEMENTATION_GUIDE.md
+- 🤖 AI agent instructions: CLAUDE.md
 ```
 
 ### Quick Start for Contributors

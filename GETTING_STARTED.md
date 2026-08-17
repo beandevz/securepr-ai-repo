@@ -93,14 +93,16 @@ LLM_PROVIDER=none
 QUEUE_PROVIDER=inproc
 ```
 
-### Optional - Enable Azure OpenAI
+### Optional - Enable the LLM analyzer
+
+The backend talks to any OpenAI-compatible endpoint. Point `OPENAI_BASE_URL` at
+Azure OpenAI or a self-hosted gateway; leave it unset for api.openai.com.
 
 ```bash
-LLM_PROVIDER=azure_openai
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
-AZURE_OPENAI_KEY=your-key
-AZURE_OPENAI_DEPLOYMENT=gpt-4
-AZURE_OPENAI_API_VERSION=2024-10-21
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_MODEL=gpt-4o
+# OPENAI_BASE_URL=https://your-resource.openai.azure.com/openai/v1
 ```
 
 ### Optional - Enable RAG
@@ -108,10 +110,13 @@ AZURE_OPENAI_API_VERSION=2024-10-21
 ```bash
 RAG_ENABLED=true
 RAG_DB_PATH=rag.db
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-> **Note**: RAG works without Azure OpenAI using local hash-based embeddings (for testing). For production semantic search, configure Azure OpenAI embeddings.
+> **Note**: without an embedding model, embeddings fall back to SHA-256 hashes,
+> which are deterministic but not semantic — retrieval on top of them is
+> meaningless, so it is **skipped** unless you also set
+> `RAG_ALLOW_LOCAL_EMBEDDINGS=true`. Use that only for local testing.
 
 See `backend/.env.example` for all options.
 
