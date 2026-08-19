@@ -28,6 +28,15 @@ export class InProcQueue {
 
     const job = this.queue.shift()!;
     try {
+      // The PR may have been closed while this job sat in the queue; reviewing
+      // it would post a comment nobody asked for on a closed PR.
+      const record = await jobStore.get(job.jobId);
+      if (record?.pr_state === 'closed') {
+        console.log(`[InProcQueue] Skipping ${job.jobId}: PR was closed before analysis`);
+        await jobStore.setStatus(job.jobId, 'skipped');
+        return;
+      }
+
       await jobStore.setStatus(job.jobId, 'running');
       const { processJob } = await import('../services/pipeline/pipeline-v2.js');
       const result = await processJob(job);

@@ -224,13 +224,6 @@ export async function setWebhook(id: string, webhookId: number): Promise<Connect
   return row ? toSafe(row) : null;
 }
 
-export async function touchLastSync(id: string): Promise<void> {
-  await initDb();
-  const db = await getDb();
-  db.run("UPDATE connected_repos SET last_sync = datetime('now') WHERE id = ?", [id]);
-  saveDb(db);
-}
-
 export async function deleteRepo(id: string): Promise<boolean> {
   await initDb();
   const db = await getDb();

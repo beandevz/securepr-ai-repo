@@ -24,6 +24,8 @@ export interface JobRecord {
   host: string;
   pr_number: number;
   head_sha: string;
+  /** 'open' | 'closed' — scans for closed PRs are hidden from listings. */
+  pr_state: string;
   result?: Record<string, unknown> | null;
   error?: string | null;
 }
@@ -38,6 +40,7 @@ interface JobRow {
   host: string | null;
   pr_number: number;
   head_sha: string;
+  pr_state: string | null;
   result: string | null;
   error: string | null;
 }
@@ -53,6 +56,7 @@ function toRecord(row: JobRow): JobRecord {
     host: row.host || GITHUB_DOTCOM_HOST,
     pr_number: row.pr_number,
     head_sha: row.head_sha,
+    pr_state: row.pr_state || 'open',
     result: row.result ? JSON.parse(row.result) : null,
     error: row.error,
   };
@@ -105,12 +109,16 @@ async function initDb(): Promise<void> {
     'pr_number INTEGER NOT NULL, ' +
     'head_sha TEXT NOT NULL, ' +
     "host TEXT NOT NULL DEFAULT 'github.com', " +
+    "pr_state TEXT NOT NULL DEFAULT 'open', " +
     'result TEXT, ' +
     'error TEXT)'
   );
   // Jobs written before multi-host support predate the column; backfill them
   // as github.com rather than forcing users to drop the DB.
   addColumnIfMissing(db, 'jobs', 'host', "TEXT NOT NULL DEFAULT 'github.com'");
+  // Older jobs predate PR-state tracking; treat them as open until a webhook
+  // says otherwise, so nothing already visible disappears on upgrade.
+  addColumnIfMissing(db, 'jobs', 'pr_state', "TEXT NOT NULL DEFAULT 'open'");
   saveDb(db);
 }
 
@@ -151,8 +159,8 @@ export class JobStore {
     const now = nowIso();
     const host = options.host || GITHUB_DOTCOM_HOST;
     db.run(
-      'INSERT INTO jobs(id, status, created_at, updated_at, owner, repo, pr_number, head_sha, host, result, error) ' +
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)',
+      'INSERT INTO jobs(id, status, created_at, updated_at, owner, repo, pr_number, head_sha, host, pr_state, result, error) ' +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL)",
       [options.jobId, 'queued', now, now, options.owner, options.repo, options.prNumber, options.headSha, host]
     );
     saveDb(db);
@@ -166,9 +174,29 @@ export class JobStore {
       host,
       pr_number: options.prNumber,
       head_sha: options.headSha,
+      pr_state: 'open',
       result: null,
       error: null,
     };
+  }
+
+  /**
+   * Mark every scan of a pull request as belonging to a closed PR, hiding them
+   * from listings. Called when GitHub reports the PR closed or merged.
+   */
+  async markPrClosed(
+    owner: string, repo: string, prNumber: number, host: string = GITHUB_DOTCOM_HOST
+  ): Promise<number> {
+    await initDb();
+    const db = await getDb();
+    db.run(
+      "UPDATE jobs SET pr_state = 'closed', updated_at = ? " +
+      'WHERE owner = ? AND repo = ? AND pr_number = ? AND host = ?',
+      [nowIso(), owner, repo, prNumber, host]
+    );
+    const changes = db.getRowsModified();
+    if (changes > 0) saveDb(db);
+    return changes;
   }
 
   async setStatus(jobId: string, status: string): Promise<void> {
@@ -198,10 +226,15 @@ export class JobStore {
     saveDb(db);
   }
 
-  async list(): Promise<JobRecord[]> {
+  /** Scans of open PRs, newest first; closed PRs only when explicitly asked for. */
+  async list(options: { includeClosed?: boolean } = {}): Promise<JobRecord[]> {
     await initDb();
     const db = await getDb();
-    const stmt = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC');
+    const stmt = db.prepare(
+      options.includeClosed
+        ? 'SELECT * FROM jobs ORDER BY created_at DESC'
+        : "SELECT * FROM jobs WHERE pr_state = 'open' ORDER BY created_at DESC"
+    );
     const results: JobRecord[] = [];
     while (stmt.step()) {
       results.push(toRecord(stmt.getAsObject() as unknown as JobRow));
@@ -214,6 +247,32 @@ export class JobStore {
     await initDb();
     const row = await getRow(jobId);
     return row ? toRecord(row) : null;
+  }
+
+  /**
+   * Bulk delete, optionally narrowed to a status or PR state. Callers are
+   * responsible for confirming intent — an unfiltered call wipes the store.
+   */
+  async deleteAll(filter: { status?: string; prState?: string } = {}): Promise<number> {
+    await initDb();
+    const db = await getDb();
+
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (filter.status) {
+      conditions.push('status = ?');
+      params.push(filter.status);
+    }
+    if (filter.prState) {
+      conditions.push('pr_state = ?');
+      params.push(filter.prState);
+    }
+
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+    db.run(`DELETE FROM jobs${where}`, params);
+    const changes = db.getRowsModified();
+    if (changes > 0) saveDb(db);
+    return changes;
   }
 
   async delete(jobId: string): Promise<boolean> {

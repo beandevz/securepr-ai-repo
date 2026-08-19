@@ -23,7 +23,3 @@ export function getQueueInstance(): QueueLike {
   }
   return _queueInstance;
 }
-
-export function resetQueueInstance(): void {
-  _queueInstance = null;
-}

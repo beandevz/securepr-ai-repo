@@ -1,5 +1,6 @@
 import { Job } from '../../queue/models.js';
 import { Finding } from '../../domain/models.js';
+import { RagStatus } from '../rag-service.js';
 
 /**
  * Context object passed between pipeline stages.
@@ -8,6 +9,8 @@ export class PipelineContext {
   job: Job;
   files: Record<string, unknown>[] = [];
   findings: Finding[] = [];
+  /** Retrieval outcome per analyzed file, reported in the PR summary. */
+  ragStatuses: RagStatus[] = [];
   overallSeverity: string = 'LOW';
   shouldFail: boolean = false;
   metadata: Record<string, unknown> = {};

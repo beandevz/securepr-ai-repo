@@ -100,14 +100,15 @@ Access UI at: `http://localhost:5173`
 Create `.env` in `backend/` directory:
 
 ```bash
-# Required
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
-AZURE_OPENAI_KEY=your-key
-AZURE_OPENAI_DEPLOYMENT=gpt-4
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+# LLM (OpenAI-compatible endpoint; set OPENAI_BASE_URL for Azure/self-hosted)
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_MODEL=gpt-4o
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # GitHub
 GITHUB_TOKEN=ghp_your_token_here
+GITHUB_ALLOWED_HOSTS=github.com
 SECUREPR_INGEST_SECRET=change_me_to_random_string
 
 # Optional
@@ -188,11 +189,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## 📚 Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [API Documentation](docs/API.md)
-- [Security Analysis Guide](docs/SECURITY_ANALYSIS.md)
+- [Review Flow & Architecture](docs/FLOW.md)
+- [Webhook Setup](docs/WEBHOOK_GUIDE.md)
 - [RAG Knowledge Base](docs/RAG_SETUP.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [GitHub Token Scopes](docs/GITHUB_TOKEN_SCOPES.md)
+- [Check Run vs Commit Status](docs/CHECK_RUN_STATUS.md)
+- [Project Memory (decision log)](docs/PROJECT_MEMORY.md)
 
 ## 🤝 Contributing
 
@@ -215,7 +217,7 @@ cd backend && npm run typecheck
 
 ## 📄 License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
+MIT. No `LICENSE` file has been added to the repo yet.
 
 ## 🙏 Acknowledgments
 

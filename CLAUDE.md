@@ -71,7 +71,9 @@ Keep each update ≤ 25 lines.
 - `github/checks-publisher.ts` - ChecksPublisher (check runs, commit statuses)
 - `github/status-client.ts` - getCommitStatus, getCheckRuns
 - `github/repo-client.ts` - RepoWebhookClient (getRepo, createWebhook, deleteWebhook)
-- `ai/azure-openai-client.ts` - chatCompletionJson, embedTexts (with local hash fallback)
+- `ai/openai-client.ts` - chatCompletion, chatCompletionJson, embedTexts, isEmbeddingConfigured
+  (OpenAI-compatible; `OPENAI_BASE_URL` retargets it. Local SHA-256 embedding fallback
+  is non-semantic and gated behind `RAG_ALLOW_LOCAL_EMBEDDINGS`.)
 
 **Analyzer Layer** (`src/services/analyzers/` - Strategy Pattern):
 - `base.ts` - SecurityAnalyzer interface
@@ -90,32 +92,37 @@ Keep each update ≤ 25 lines.
 
 **Service Layer**:
 - `ingest-service.ts` - IngestService: validateGithubPayload, createCheckRunIfEnabled, createJob, enqueueJob
-- `rag-service.ts` - RAG retrieval wrapper
+- `rag-service.ts` - RAG retrieval wrapper (RagContext, RagStatus, getRagHealth)
+- `rag-query.ts` - buildRagQueries: retrieval queries from a diff's added lines
 - `repo-service.ts` - connectRepo, listRepos, configureWebhook, disconnectRepo (Connect Repository feature)
 - `diff-fetcher.ts` - DiffFetcher: fetchFiles with GitHub pagination
 - `prompts.ts` - SYSTEM_PROMPT, CHUNK_PROMPT_TEMPLATE (explicit finding JSON schema), formatChunkPrompt
 
 **Queue Management** (`src/queue/`):
 - `models.ts` - Job interface
-- `job-store.ts` - In-memory JobStore (create, setStatus, setResult, setError, list, get)
+- `job-store.ts` - Persistent sql.js JobStore at `JOBS_DB_PATH` (create, setStatus, setResult,
+  setError, list, get, deleteAll, markPrClosed); `pr_state` column hides closed PRs
 - `manager.ts` - InProcQueue (setInterval-based poll), ServiceBusQueue (placeholder)
 - `instance.ts` - Queue singleton factory (getQueueInstance)
 
 **RAG** (`src/rag/`):
 - `store.ts` - sql.js-backed (SQLite via WASM) vector store with cosine similarity
+- `chunker.ts` - text chunking (RAG_CHUNK_SIZE_CHARS / RAG_CHUNK_OVERLAP_CHARS)
+- `rag-llm.ts` - askWithRag: retrieval-augmented Q&A behind POST /rag/ask
 
 **Connected Repos** (`src/repos/`):
 - `store.ts` - sql.js-backed store for connected repos (encrypted GitHub token, webhook_id, status)
 
 **Utilities** (`src/utils/`):
-- `severity.ts` - getMaxSeverity, shouldFailGate, sortFindingsBySeverity
+- `severity.ts` - getMaxSeverity, shouldFailGate
 - `formatters.ts` - formatInlineComment, formatSummary
 
 **API Routes** (`src/api/routes/`):
 - `ingest.ts` - POST /ingest/github-actions (accepts native GitHub `X-Hub-Signature-256` or custom `X-SecurePR-Signature`; resolves the sending host from the payload and the per-repo token from `repos/store.ts`)
 - `health.ts` - GET /health
-- `jobs.ts` - GET /jobs, GET /jobs/:jobId, DELETE /jobs/:jobId
-- `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ingest
+- `jobs.ts` - GET /jobs (open PRs only; `?include_closed=true` for all), GET /jobs/:jobId, DELETE /jobs/:jobId, DELETE /jobs (bulk; requires `?confirm=true`, optional `?status=`/`?pr_state=`)
+- `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ask;
+  GET /rag/sources, /rag/stats; DELETE /rag/sources/:source
 - `github-status.ts` - GET /github/status/:owner/:repo/:sha
 - `repos.ts` - POST /repos (connect + auto-create webhook), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id
 
@@ -123,7 +130,7 @@ Keep each update ≤ 25 lines.
 
 ### 3.2 Frontend Architecture (React + TypeScript, modular)
 
-**Types** (`ui/types/`): `job.ts` (Job, JobStatus, JobResult, JobDetail) — each page otherwise
+**Types** (`ui/types/`): `job.ts` (Job, JobStatus, JobResult, PrState) — each page otherwise
 defines its own local view-model interfaces rather than sharing a central types barrel.
 
 **API helpers** (`ui/lib/`):
@@ -131,7 +138,6 @@ defines its own local view-model interfaces rather than sharing a central types 
 - `storage.ts` - localStorage-backed app settings (apiBaseUrl, tokens)
 
 **Utilities** (`ui/utils/` - extracted business logic):
-- `navigation.ts` - scrollToElement, nextIndex, prevIndex
 - `export.ts` - exportAsJSON/CSV/Markdown/HTML for scan results
 
 **Components** (`ui/components/`):
@@ -299,8 +305,10 @@ When working on SecurePR AI:
 
 ## 7) Feature suggestion skill (what's next)
 When asked "what missing features?", prioritize by impact:
-- Persistent job store + status endpoints (runs/jobs)
+- Integration test harness for the full pipeline (webhook → publish)
+- Real diff chunking (`MAX_LLM_CHUNKS` caps files, not chunks — files past the
+  cap are dropped silently)
 - Check-run annotations and richer checks output
-- RAG management: upload/search/delete/list sources
-- Audit log DB + metrics dashboard
-- Provider abstraction + integration tests harness
+- Audit log DB + metrics dashboard (logging is `console.log` today)
+- Working ServiceBusQueue (currently a placeholder; only `inproc` runs)
+- Surface LLM errors instead of swallowing them (`llm-analyzer.ts` bare `catch {}`)
