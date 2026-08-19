@@ -82,7 +82,7 @@ function loadSettings(): Settings {
     ragTopK: parseInt(env.RAG_TOP_K || '4', 10),
     // Cosine score below which a retrieved chunk is treated as irrelevant and
     // dropped, so unrelated policy text never reaches the review prompt.
-    ragMinScore: parseFloat(env.RAG_MIN_SCORE || '0.30'),
+    ragMinScore: parseFloat(env.RAG_MIN_SCORE || '0.22'),
     // Hash-based local embeddings are deterministic but not semantic: retrieval
     // on top of them is meaningless, so RAG stays off unless explicitly allowed.
     ragAllowLocalEmbeddings: (env.RAG_ALLOW_LOCAL_EMBEDDINGS || 'false').toLowerCase() === 'true',
