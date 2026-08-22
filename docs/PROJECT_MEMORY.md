@@ -330,5 +330,9 @@ GitHub instance is untouched.
   repo delete can never leave a repo connected with its history gone.
 **Verification**: 3 new `JobStore.deleteByRepo` cases; `npm test` 100 passed;
 backend `tsc --noEmit` and frontend `tsc -b` clean.
-**Open**: `handleDisconnect` in ConnectRepoPage still ignores a non-2xx
-response and drops the row from the list regardless — pre-existing, worth a fix.
+**Follow-up (same day)**: fixed that — added `apiDelete<T>` to `ui/lib/api.ts`
+(mirrors `apiGet`/`apiPostJson`, prefers the API's `detail` field over the raw
+body) and `handleDisconnect` now uses it, so the row is dropped only after the
+server confirms and a failure lands in the page's error banner.
+`RagManagerPage.deleteSource` already checked `res.ok`; it was the only other
+raw DELETE and was left as is.

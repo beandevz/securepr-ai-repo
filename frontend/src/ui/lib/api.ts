@@ -41,3 +41,24 @@ export async function apiPostJson<T>(
   }
   return res.json() as Promise<T>;
 }
+
+/**
+ * DELETE request, returns parsed JSON.
+ * Error bodies from the API carry a `detail` field; prefer it over the raw
+ * body so callers can show the server's reason instead of a bare status code.
+ */
+export async function apiDelete<T>(baseUrl: string, path: string): Promise<T> {
+  const url = `${baseUrl}${path}`;
+  const res = await fetch(url, { method: 'DELETE' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let detail = text || res.statusText;
+    try {
+      detail = JSON.parse(text).detail || detail;
+    } catch {
+      // Not JSON - keep the raw body.
+    }
+    throw new Error(`DELETE ${path} failed: ${res.status} ${detail}`);
+  }
+  return res.json() as Promise<T>;
+}

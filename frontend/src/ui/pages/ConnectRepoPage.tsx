@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { theme } from '../theme';
 import { loadSettings } from '../lib/storage';
-import { apiGet, apiPostJson } from '../lib/api';
+import { apiDelete, apiGet, apiPostJson } from '../lib/api';
 
 interface ConnectedRepo {
   id: string;
@@ -56,8 +56,11 @@ export const ConnectRepoPage: React.FC = () => {
       'Its webhook, stored token, and every scan it produced are deleted. ' +
       'This cannot be undone.'
     )) return;
+    setError('');
     try {
-      await fetch(`${apiBaseUrl}/repos/${id}`, { method: 'DELETE' });
+      // Drop the row only once the server confirms it went; a failed delete
+      // used to disappear from the list while the repo stayed connected.
+      await apiDelete<{ ok: boolean; deleted_scans: number }>(apiBaseUrl, `/repos/${id}`);
       setConnectedRepos(prev => prev.filter(repo => repo.id !== id));
     } catch (err: any) {
       setError(err.message || String(err));
