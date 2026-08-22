@@ -399,9 +399,9 @@ export const DashboardPage: React.FC = () => {
         marginBottom: theme.spacing['2xl'],
       }}>
         {[
-          { icon: '🔍', num: stats.prsScanned, label: 'PRs Scanned Today', color: theme.colors.blue },
+          { icon: '🔍', num: stats.prsScanned, label: 'PRs Scanned', color: theme.colors.blue },
           { icon: '⚠️', num: stats.issuesDetected, label: 'Issues Detected', color: theme.colors.red },
-          { icon: '✅', num: stats.fixedToday, label: 'Fixed Today', color: theme.colors.green },
+          { icon: '✅', num: stats.fixedToday, label: 'Fixed', color: theme.colors.green },
           { icon: '📈', num: `${stats.passRate}%`, label: 'Pass Rate', color: theme.colors.cyan },
         ].map((stat, i) => (
           <div key={i} style={{

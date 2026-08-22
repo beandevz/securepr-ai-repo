@@ -106,3 +106,33 @@ describe('JobStore.deleteAll', () => {
     expect(await jobStore.deleteAll()).toBe(0);
   });
 });
+
+describe('JobStore.deleteByRepo', () => {
+  beforeEach(async () => {
+    await jobStore.deleteAll();
+    await seed('job_web_open', 20);
+    await seed('job_web_closed', 21);
+    await jobStore.markPrClosed('acme', 'web', 21);
+    await jobStore.create({
+      jobId: 'job_api', owner: 'acme', repo: 'api', prNumber: 20, headSha: 'sha', host: 'github.com',
+    });
+    await seed('job_web_ghes', 20, 'github.example.com');
+  });
+
+  it('deletes every scan of the repo, open and closed alike', async () => {
+    expect(await jobStore.deleteByRepo('acme', 'web', 'github.com')).toBe(2);
+
+    const ids = (await jobStore.list({ includeClosed: true })).map(j => j.id);
+    expect(ids.sort()).toEqual(['job_api', 'job_web_ghes']);
+  });
+
+  it('leaves the same repo name on another host alone', async () => {
+    await jobStore.deleteByRepo('acme', 'web', 'github.com');
+    expect(await jobStore.get('job_web_ghes')).not.toBeNull();
+  });
+
+  it('returns 0 for a repo with no scans', async () => {
+    expect(await jobStore.deleteByRepo('acme', 'nothing', 'github.com')).toBe(0);
+    expect(await jobStore.list({ includeClosed: true })).toHaveLength(4);
+  });
+});

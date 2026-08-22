@@ -122,9 +122,6 @@ Value: us-east-1
 
 **Common Secrets**:
 ```
-Name: GITHUB_TOKEN
-Value: ghp_your_personal_access_token
-
 Name: SECUREPR_INGEST_SECRET
 Value: generate_random_32_char_string
 ```

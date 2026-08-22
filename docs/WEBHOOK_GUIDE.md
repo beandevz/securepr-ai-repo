@@ -268,6 +268,28 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
 }
 ```
 
+**Already-open PRs** — a new webhook only receives events created after it
+exists, so `connectRepo` finishes by calling `scanOpenPullRequests`: it lists
+open PRs (`GET /repos/:owner/:repo/pulls?state=open`, newest first) and queues a
+job for each, exactly as an `opened` webhook would. It is best effort — a
+failure is logged and the repo stays connected — and capped by
+`MAX_OPEN_PRS_TO_SCAN` (default 20) so connecting a busy repo cannot queue
+hundreds of LLM analyses at once. Set `SCAN_OPEN_PRS_ON_CONNECT=false` to turn
+it off. `POST /repos` reports the count as `queued_scans`.
+
+**Disconnecting** — `DELETE /repos/:id` → `repo-service.ts:disconnectRepo` is the
+mirror image, and it is destructive:
+
+1. Deletes the GitHub webhook (best effort — a failure is logged, not fatal, so a
+   revoked token can't strand the repo as permanently connected).
+2. Deletes the repo row, and with it the encrypted token.
+3. Deletes **every scan of that repo on that host** (`jobStore.deleteByRepo`).
+   Scans are removed because the token that could re-fetch their diffs is gone;
+   leaving them would strand findings nobody can refresh or act on.
+
+The response reports what went: `{ "ok": true, "deleted_scans": 12 }`. Scans of
+the same `owner/repo` on a *different* host are untouched.
+
 ---
 
 ## 🔒 Webhook Security
@@ -703,7 +725,7 @@ router.post('/ingest/github-actions', async (req, res) => {
 
 ```bash
 curl -i -X POST "https://api.github.com/repos/$OWNER/$REPO/check-runs" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -d '{"name":"SecurePR AI","head_sha":"'"$HEAD_SHA"'","status":"in_progress"}'
@@ -715,7 +737,7 @@ curl -i -X POST "https://api.github.com/repos/$OWNER/$REPO/check-runs" \
   installation token, or set `STATUS_REPORTING_MODE=commit_status`, which uses
   the commit status API and works with a PAT. See
   [CHECK_RUN_STATUS.md](./CHECK_RUN_STATUS.md).
-- Check rate limits: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit`
+- Check rate limits: `curl -H "Authorization: Bearer $TOKEN" https://api.github.com/rate_limit`
 
 ---
 

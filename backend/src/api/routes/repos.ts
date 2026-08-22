@@ -34,8 +34,8 @@ router.post('/repos', async (req: Request, res: Response) => {
       res.status(400).json({ detail: 'repoUrl is required' });
       return;
     }
-    const repo = await repoService.connectRepo(repoUrl, githubToken || '');
-    res.json(repo);
+    const { queuedScans, ...repo } = await repoService.connectRepo(repoUrl, githubToken || '');
+    res.json({ ...repo, queued_scans: queuedScans });
   } catch (err) {
     handleError(err, res);
   }
@@ -67,12 +67,12 @@ router.post('/repos/:id/webhook', async (req: Request, res: Response) => {
 
 router.delete('/repos/:id', async (req: Request, res: Response) => {
   try {
-    const ok = await repoService.disconnectRepo(req.params.id);
-    if (!ok) {
+    const { found, deletedScans } = await repoService.disconnectRepo(req.params.id);
+    if (!found) {
       res.status(404).json({ detail: 'Repository not found' });
       return;
     }
-    res.json({ ok: true });
+    res.json({ ok: true, deleted_scans: deletedScans });
   } catch (err) {
     handleError(err, res);
   }

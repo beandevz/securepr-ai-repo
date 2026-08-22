@@ -17,6 +17,30 @@ export class RepoWebhookClient {
     return r.data;
   }
 
+  /**
+   * Open PRs, newest first, capped at `limit`. Used to backfill scans for PRs
+   * that already existed when the repo was connected — the webhook only ever
+   * delivers events that happen after it is created.
+   */
+  async listOpenPullRequests(
+    owner: string, repo: string, limit: number
+  ): Promise<Array<{ number: number; head?: { sha?: string } }>> {
+    const prs: Array<{ number: number; head?: { sha?: string } }> = [];
+    for (let page = 1; prs.length < limit; page++) {
+      const perPage = Math.min(100, limit - prs.length);
+      const r = await this.client.http.get(
+        `/repos/${owner}/${repo}/pulls?state=open&sort=created&direction=desc` +
+        `&per_page=${perPage}&page=${page}`
+      );
+      const batch = (r.data || []) as Array<{ number: number; head?: { sha?: string } }>;
+      // Slice rather than trusting per_page: the cap is a safety limit on how
+      // much work one connect can queue, so it holds whatever the API returns.
+      prs.push(...batch.slice(0, perPage));
+      if (batch.length < perPage) break;
+    }
+    return prs;
+  }
+
   async createWebhook(
     owner: string, repo: string, targetUrl: string, secret: string
   ): Promise<number> {

@@ -286,3 +286,76 @@ GETTING_STARTED / SETUP_GITHUB / docker-compose (settings.ts never read them).
 `tsc -b` clean; no broken markdown links repo-wide.
 **Open**: no `LICENSE` file; `docs/DEPLOYMENT_COMPARISON.md` and
 `docs/REVIEW_BATCH.md` (3 lines) have no referrers and were left in place.
+
+### 2026-08-22: Removed the global GITHUB_TOKEN fallback
+**Current State**: Ingest now resolves a GitHub token from two sources only —
+`X-SecurePR-Github-Token` (relay path) > the per-repo encrypted token in
+`repos/store.ts`. `settings.githubToken` / the `GITHUB_TOKEN` env var are gone
+(`core/settings.ts`, `api/routes/ingest.ts`). A webhook for a repo that was
+never connected and carries no relay header gets `400 No GitHub token for
+<owner>/<repo> on <host>` instead of silently running under a shared PAT.
+**Decisions**:
+- One PAT spanning every repo conflicted with the "protect code data /
+  least privilege" constraint and made PR activity unattributable. Connect
+  Repository already stores an encrypted per-repo token, so the fallback was
+  the weakest link, not a needed path.
+- The webhook HMAC is still the global `SECUREPR_INGEST_SECRET`, so an
+  unconnected repo can pass signature checks — hence the explicit 400 naming
+  the repo and host rather than a bare "Missing GitHub token".
+**Docs updated**: `backend/.env.example`, `docker-compose.yml`, README,
+GETTING_STARTED (new "GitHub credentials" section), SETUP_GITHUB,
+GITHUB_TOKEN_SCOPES (resolution order + security notes), DEPLOYMENT_AWS
+(tfvars, ECS secrets, Secrets Manager, CI secrets), DEPLOYMENT_AZURE (app
+settings, Container Apps secrets). WEBHOOK_GUIDE's debug curls now use `$TOKEN`
+so the shell var is not mistaken for the removed setting.
+**Verification**: `npx tsc --noEmit` clean; `npm test` 97 passed.
+**Open**: connecting a repo is now mandatory for local dev — worth a smoke-test
+fixture that connects a repo before replaying a webhook.
+
+### 2026-08-22: Disconnecting a repo now deletes its scans
+**Current State**: `repo-service.ts:disconnectRepo` deleted the webhook and the
+repo row but left every job behind — scans stayed in the queue monitor for a
+repo whose token no longer existed. It now calls the new
+`jobStore.deleteByRepo(owner, repo, host)` after the repo row is removed, and
+returns `{ found, deletedScans }`; `DELETE /repos/:id` answers
+`{ ok: true, deleted_scans: N }`. The UI confirm dialog now says the scans go
+too. Matching is by `owner + repo + host`, so the same repo name on another
+GitHub instance is untouched.
+**Decisions**:
+- Delete rather than soft-hide (unlike `markPrClosed`): the encrypted token
+  goes with the repo row, so nothing can re-fetch those diffs — the findings
+  are unrefreshable, and keeping code excerpts for a repo the operator
+  deliberately unhooked runs against "minimize code retention".
+- Scans are purged *after* `repoStore.deleteRepo` returns true, so a failed
+  repo delete can never leave a repo connected with its history gone.
+**Verification**: 3 new `JobStore.deleteByRepo` cases; `npm test` 100 passed;
+backend `tsc --noEmit` and frontend `tsc -b` clean.
+**Follow-up (same day)**: fixed that — added `apiDelete<T>` to `ui/lib/api.ts`
+(mirrors `apiGet`/`apiPostJson`, prefers the API's `detail` field over the raw
+body) and `handleDisconnect` now uses it, so the row is dropped only after the
+server confirms and a failure lands in the page's error banner.
+`RagManagerPage.deleteSource` already checked `res.ok`; it was the only other
+raw DELETE and was left as is.
+
+### 2026-08-22: Connecting a repo now scans its already-open PRs
+**Current State**: Jobs were only ever created by a webhook delivery
+(`IngestService.createJob` is the sole writer), and a fresh hook only receives
+events raised after it exists — so PRs already open at connect time were never
+scanned, and nothing in the codebase called `GET /repos/:owner/:repo/pulls`.
+`connectRepo` now ends with `scanOpenPullRequests`: lists open PRs newest-first
+via the new `RepoWebhookClient.listOpenPullRequests`, then creates a check
+run + job + enqueue per PR, the same path an `opened` webhook takes.
+`POST /repos` returns `queued_scans`; the Connect page shows it in a new notice
+banner. New settings: `SCAN_OPEN_PRS_ON_CONNECT` (default true),
+`MAX_OPEN_PRS_TO_SCAN` (default 20).
+**Decisions**:
+- Backfill at connect, not a manual rescan endpoint — user's call; the cap +
+  kill-switch cover the "connected a busy repo" blast radius.
+- Best effort: a listing failure or one bad PR is logged and skipped, never
+  fails the connect — matching how webhook creation already behaves.
+- `listOpenPullRequests` slices each page to the remaining budget instead of
+  trusting `per_page`, so the cap holds whatever the API returns.
+**Verification**: new `repo-client.test.ts` (3 cases: short page, paging to the
+cap, empty repo); `npm test` 103 passed; backend + frontend typecheck clean.
+**Open**: backfill runs inline in the POST — a repo at the 20-PR cap makes the
+connect request wait on 20 sequential check-run creations.
