@@ -216,7 +216,7 @@ docker-compose down
 | `GET` | `/jobs` | List all jobs |
 | `GET` | `/jobs/:jobId` | Get job details |
 | `DELETE` | `/jobs/:jobId` | Delete a job |
-| `POST` | `/repos` | Connect a repo (stores token, creates webhook) |
+| `POST` | `/repos` | Connect a repo (stores token, creates webhook, scans open PRs) |
 | `GET` | `/repos` | List connected repos |
 | `POST` | `/repos/:id/webhook` | (Re)create the repo's webhook |
 | `DELETE` | `/repos/:id` | Disconnect: removes webhook, token, **and all scans of that repo** |

@@ -94,7 +94,8 @@ Keep each update ≤ 25 lines.
 - `ingest-service.ts` - IngestService: validateGithubPayload, createCheckRunIfEnabled, createJob, enqueueJob
 - `rag-service.ts` - RAG retrieval wrapper (RagContext, RagStatus, getRagHealth)
 - `rag-query.ts` - buildRagQueries: retrieval queries from a diff's added lines
-- `repo-service.ts` - connectRepo, listRepos, configureWebhook, disconnectRepo (Connect Repository feature; disconnect also purges that repo's scans)
+- `repo-service.ts` - connectRepo (also backfills scans for already-open PRs, capped by
+  `MAX_OPEN_PRS_TO_SCAN`), listRepos, configureWebhook, disconnectRepo (also purges that repo's scans)
 - `diff-fetcher.ts` - DiffFetcher: fetchFiles with GitHub pagination
 - `prompts.ts` - SYSTEM_PROMPT, CHUNK_PROMPT_TEMPLATE (explicit finding JSON schema), formatChunkPrompt
 
@@ -124,7 +125,7 @@ Keep each update ≤ 25 lines.
 - `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ask;
   GET /rag/sources, /rag/stats; DELETE /rag/sources/:source
 - `github-status.ts` - GET /github/status/:owner/:repo/:sha
-- `repos.ts` - POST /repos (connect + auto-create webhook), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id (removes webhook + token + all scans, returns `deleted_scans`)
+- `repos.ts` - POST /repos (connect + auto-create webhook + scan open PRs, returns `queued_scans`), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id (removes webhook + token + all scans, returns `deleted_scans`)
 
 **Entry Point**: `src/main.ts` - Express app with CORS, raw body capture for HMAC, queue startup, graceful shutdown
 

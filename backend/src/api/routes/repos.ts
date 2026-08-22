@@ -34,8 +34,8 @@ router.post('/repos', async (req: Request, res: Response) => {
       res.status(400).json({ detail: 'repoUrl is required' });
       return;
     }
-    const repo = await repoService.connectRepo(repoUrl, githubToken || '');
-    res.json(repo);
+    const { queuedScans, ...repo } = await repoService.connectRepo(repoUrl, githubToken || '');
+    res.json({ ...repo, queued_scans: queuedScans });
   } catch (err) {
     handleError(err, res);
   }

@@ -33,6 +33,8 @@ export interface Settings {
 
   tokenEncryptionKey: string;
   publicBaseUrl: string | undefined;
+  scanOpenPrsOnConnect: boolean;
+  maxOpenPrsToScan: number;
   reposDbPath: string;
   jobsDbPath: string;
 
@@ -95,6 +97,11 @@ function loadSettings(): Settings {
 
     tokenEncryptionKey: env.TOKEN_ENCRYPTION_KEY || 'change_me',
     publicBaseUrl: env.PUBLIC_BASE_URL || undefined,
+    // A new webhook only sees events from now on, so PRs already open when a
+    // repo is connected would never be scanned. Backfill them, capped so
+    // connecting a busy repo can't queue hundreds of LLM analyses at once.
+    scanOpenPrsOnConnect: (env.SCAN_OPEN_PRS_ON_CONNECT || 'true').toLowerCase() === 'true',
+    maxOpenPrsToScan: parseInt(env.MAX_OPEN_PRS_TO_SCAN || '20', 10),
     reposDbPath: env.REPOS_DB_PATH || 'repos.db',
     jobsDbPath: env.JOBS_DB_PATH || 'jobs.db',
 

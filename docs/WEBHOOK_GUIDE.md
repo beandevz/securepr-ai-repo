@@ -268,6 +268,15 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
 }
 ```
 
+**Already-open PRs** — a new webhook only receives events created after it
+exists, so `connectRepo` finishes by calling `scanOpenPullRequests`: it lists
+open PRs (`GET /repos/:owner/:repo/pulls?state=open`, newest first) and queues a
+job for each, exactly as an `opened` webhook would. It is best effort — a
+failure is logged and the repo stays connected — and capped by
+`MAX_OPEN_PRS_TO_SCAN` (default 20) so connecting a busy repo cannot queue
+hundreds of LLM analyses at once. Set `SCAN_OPEN_PRS_ON_CONNECT=false` to turn
+it off. `POST /repos` reports the count as `queued_scans`.
+
 **Disconnecting** — `DELETE /repos/:id` → `repo-service.ts:disconnectRepo` is the
 mirror image, and it is destructive:
 

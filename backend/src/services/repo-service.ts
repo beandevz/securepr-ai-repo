@@ -4,6 +4,7 @@ import { RepoWebhookClient } from '../integrations/github/repo-client.js';
 import { apiBaseUrlForHost, parseRepoUrl } from '../integrations/github/host.js';
 import * as repoStore from '../repos/store.js';
 import { jobStore } from '../queue/job-store.js';
+import { IngestService } from './ingest-service.js';
 import { ConnectedRepoSafe } from '../repos/store.js';
 import { ValidationError, VCSIntegrationError, ConfigurationError } from '../exceptions.js';
 
@@ -52,7 +53,66 @@ async function ensureWebhook(
   }
 }
 
-export async function connectRepo(repoUrl: string, githubToken: string): Promise<ConnectedRepoSafe> {
+/**
+ * Queue a scan for every PR that is already open on a freshly connected repo.
+ *
+ * The webhook created above only delivers events from its creation onward, so
+ * without this a repo's existing PRs stay unscanned until someone pushes to
+ * them. Best effort and capped by MAX_OPEN_PRS_TO_SCAN: a failure here must
+ * never fail the connect, and connecting a busy repo must not queue hundreds
+ * of LLM analyses at once.
+ */
+async function scanOpenPullRequests(
+  client: RepoWebhookClient,
+  owner: string,
+  name: string,
+  token: string,
+  host: string,
+  apiBaseUrl: string
+): Promise<number> {
+  if (!settings.scanOpenPrsOnConnect || settings.maxOpenPrsToScan <= 0) {
+    return 0;
+  }
+
+  let openPrs: Array<{ number: number; head?: { sha?: string } }>;
+  try {
+    openPrs = await client.listOpenPullRequests(owner, name, settings.maxOpenPrsToScan);
+  } catch (err) {
+    console.error(`Could not list open PRs for ${owner}/${name}: ${githubErrorDetail(err)}`);
+    return 0;
+  }
+
+  const mode = settings.statusReportingMode.toLowerCase();
+  let queued = 0;
+  for (const pr of openPrs) {
+    const headSha = pr.head?.sha;
+    if (!headSha) {
+      continue;
+    }
+    try {
+      const checkRunId = await IngestService.createCheckRunIfEnabled(
+        token, owner, name, headSha, mode, apiBaseUrl
+      );
+      const job = await IngestService.createJob(
+        owner, name, pr.number, headSha, token,
+        pr as unknown as Record<string, unknown>, checkRunId, mode, host, apiBaseUrl
+      );
+      await IngestService.enqueueJob(job);
+      queued++;
+    } catch (err) {
+      // One bad PR shouldn't stop the rest from being queued.
+      console.error(`Failed to queue scan for ${owner}/${name}#${pr.number}:`, (err as Error).message);
+    }
+  }
+  return queued;
+}
+
+export interface ConnectResult extends ConnectedRepoSafe {
+  /** Scans queued for PRs that were already open at connect time. */
+  queuedScans: number;
+}
+
+export async function connectRepo(repoUrl: string, githubToken: string): Promise<ConnectResult> {
   if (!githubToken) {
     throw new ValidationError('githubToken is required');
   }
@@ -102,7 +162,9 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
     }
   }
 
-  return repo;
+  const queuedScans = await scanOpenPullRequests(client, owner, name, githubToken, host, apiBaseUrl);
+
+  return { ...repo, queuedScans };
 }
 
 export async function listRepos(): Promise<ConnectedRepoSafe[]> {

@@ -336,3 +336,26 @@ body) and `handleDisconnect` now uses it, so the row is dropped only after the
 server confirms and a failure lands in the page's error banner.
 `RagManagerPage.deleteSource` already checked `res.ok`; it was the only other
 raw DELETE and was left as is.
+
+### 2026-08-22: Connecting a repo now scans its already-open PRs
+**Current State**: Jobs were only ever created by a webhook delivery
+(`IngestService.createJob` is the sole writer), and a fresh hook only receives
+events raised after it exists — so PRs already open at connect time were never
+scanned, and nothing in the codebase called `GET /repos/:owner/:repo/pulls`.
+`connectRepo` now ends with `scanOpenPullRequests`: lists open PRs newest-first
+via the new `RepoWebhookClient.listOpenPullRequests`, then creates a check
+run + job + enqueue per PR, the same path an `opened` webhook takes.
+`POST /repos` returns `queued_scans`; the Connect page shows it in a new notice
+banner. New settings: `SCAN_OPEN_PRS_ON_CONNECT` (default true),
+`MAX_OPEN_PRS_TO_SCAN` (default 20).
+**Decisions**:
+- Backfill at connect, not a manual rescan endpoint — user's call; the cap +
+  kill-switch cover the "connected a busy repo" blast radius.
+- Best effort: a listing failure or one bad PR is logged and skipped, never
+  fails the connect — matching how webhook creation already behaves.
+- `listOpenPullRequests` slices each page to the remaining budget instead of
+  trusting `per_page`, so the cap holds whatever the API returns.
+**Verification**: new `repo-client.test.ts` (3 cases: short page, paging to the
+cap, empty repo); `npm test` 103 passed; backend + frontend typecheck clean.
+**Open**: backfill runs inline in the POST — a repo at the 20-PR cap makes the
+connect request wait on 20 sequential check-run creations.

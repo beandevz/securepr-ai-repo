@@ -15,6 +15,11 @@ interface ConnectedRepo {
   status: 'active' | 'inactive';
 }
 
+/** POST /repos also reports how many already-open PRs it queued a scan for. */
+interface ConnectResponse extends ConnectedRepo {
+  queued_scans: number;
+}
+
 export const ConnectRepoPage: React.FC = () => {
   const { apiBaseUrl } = loadSettings();
   const [githubToken, setGithubToken] = useState('');
@@ -23,6 +28,7 @@ export const ConnectRepoPage: React.FC = () => {
   const [connectedRepos, setConnectedRepos] = useState<ConnectedRepo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -37,10 +43,18 @@ export const ConnectRepoPage: React.FC = () => {
     e.preventDefault();
     setIsConnecting(true);
     setError('');
+    setNotice('');
 
     try {
-      const repo = await apiPostJson<ConnectedRepo>(apiBaseUrl, '/repos', { repoUrl, githubToken });
+      const { queued_scans, ...repo } = await apiPostJson<ConnectResponse>(
+        apiBaseUrl, '/repos', { repoUrl, githubToken }
+      );
       setConnectedRepos(prev => [repo, ...prev]);
+      setNotice(
+        queued_scans > 0
+          ? `Connected. Queued ${queued_scans} scan${queued_scans === 1 ? '' : 's'} for PRs already open — check the Queue Monitor.`
+          : 'Connected. No open PRs to scan yet; new pull requests will be scanned automatically.'
+      );
       setRepoUrl('');
       setGithubToken('');
     } catch (err: any) {
@@ -57,6 +71,7 @@ export const ConnectRepoPage: React.FC = () => {
       'This cannot be undone.'
     )) return;
     setError('');
+    setNotice('');
     try {
       // Drop the row only once the server confirms it went; a failed delete
       // used to disappear from the list while the repo stayed connected.
@@ -120,6 +135,21 @@ export const ConnectRepoPage: React.FC = () => {
           fontSize: '13px',
         }}>
           {error}
+        </div>
+      )}
+
+      {notice && (
+        <div style={{
+          marginBottom: theme.spacing.lg,
+          padding: '10px 14px',
+          borderRadius: theme.radius.sm,
+          background: theme.status.pass.bg,
+          border: `1px solid ${theme.status.pass.border}`,
+          color: theme.status.pass.color,
+          fontFamily: theme.fonts.ui,
+          fontSize: '13px',
+        }}>
+          {notice}
         </div>
       )}
 
