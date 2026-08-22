@@ -3,6 +3,7 @@ import { encryptSecret, decryptSecret } from '../core/security.js';
 import { RepoWebhookClient } from '../integrations/github/repo-client.js';
 import { apiBaseUrlForHost, parseRepoUrl } from '../integrations/github/host.js';
 import * as repoStore from '../repos/store.js';
+import { jobStore } from '../queue/job-store.js';
 import { ConnectedRepoSafe } from '../repos/store.js';
 import { ValidationError, VCSIntegrationError, ConfigurationError } from '../exceptions.js';
 
@@ -143,21 +144,43 @@ export async function configureWebhook(id: string): Promise<ConnectedRepoSafe> {
   return updated;
 }
 
-export async function disconnectRepo(id: string): Promise<boolean> {
+export interface DisconnectResult {
+  /** False when no repo with this id exists. */
+  found: boolean;
+  /** Scans removed along with the repo. */
+  deletedScans: number;
+}
+
+/**
+ * Disconnect a repository: remove its webhook, its stored token, and every
+ * scan it produced. The scans are deleted rather than kept because the token
+ * that could re-fetch their diffs is gone with the repo row, so they would
+ * linger in the queue monitor as findings nobody can act on or refresh.
+ */
+export async function disconnectRepo(id: string): Promise<DisconnectResult> {
   const row = await repoStore.getRepoById(id);
   if (!row) {
-    return false;
+    return { found: false, deletedScans: 0 };
   }
+
+  const host = row.host || 'github.com';
 
   if (row.webhook_id != null) {
     try {
       const token = decryptSecret(row.encrypted_token);
-      const client = new RepoWebhookClient(token, apiBaseUrlForHost(row.host || 'github.com'));
+      const client = new RepoWebhookClient(token, apiBaseUrlForHost(host));
       await client.deleteWebhook(row.owner, row.name, row.webhook_id);
     } catch (err) {
       console.error(`Failed to remove GitHub webhook for ${row.owner}/${row.name}:`, (err as Error).message);
     }
   }
 
-  return repoStore.deleteRepo(id);
+  const removed = await repoStore.deleteRepo(id);
+  if (!removed) {
+    return { found: false, deletedScans: 0 };
+  }
+
+  // Only after the repo row is gone, so a failed delete never orphans scans.
+  const deletedScans = await jobStore.deleteByRepo(row.owner, row.name, host);
+  return { found: true, deletedScans };
 }

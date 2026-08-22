@@ -268,6 +268,19 @@ export async function connectRepo(repoUrl: string, githubToken: string): Promise
 }
 ```
 
+**Disconnecting** — `DELETE /repos/:id` → `repo-service.ts:disconnectRepo` is the
+mirror image, and it is destructive:
+
+1. Deletes the GitHub webhook (best effort — a failure is logged, not fatal, so a
+   revoked token can't strand the repo as permanently connected).
+2. Deletes the repo row, and with it the encrypted token.
+3. Deletes **every scan of that repo on that host** (`jobStore.deleteByRepo`).
+   Scans are removed because the token that could re-fetch their diffs is gone;
+   leaving them would strand findings nobody can refresh or act on.
+
+The response reports what went: `{ "ok": true, "deleted_scans": 12 }`. Scans of
+the same `owner/repo` on a *different* host are untouched.
+
 ---
 
 ## 🔒 Webhook Security

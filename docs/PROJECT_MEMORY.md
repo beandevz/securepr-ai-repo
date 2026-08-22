@@ -311,3 +311,24 @@ so the shell var is not mistaken for the removed setting.
 **Verification**: `npx tsc --noEmit` clean; `npm test` 97 passed.
 **Open**: connecting a repo is now mandatory for local dev — worth a smoke-test
 fixture that connects a repo before replaying a webhook.
+
+### 2026-08-22: Disconnecting a repo now deletes its scans
+**Current State**: `repo-service.ts:disconnectRepo` deleted the webhook and the
+repo row but left every job behind — scans stayed in the queue monitor for a
+repo whose token no longer existed. It now calls the new
+`jobStore.deleteByRepo(owner, repo, host)` after the repo row is removed, and
+returns `{ found, deletedScans }`; `DELETE /repos/:id` answers
+`{ ok: true, deleted_scans: N }`. The UI confirm dialog now says the scans go
+too. Matching is by `owner + repo + host`, so the same repo name on another
+GitHub instance is untouched.
+**Decisions**:
+- Delete rather than soft-hide (unlike `markPrClosed`): the encrypted token
+  goes with the repo row, so nothing can re-fetch those diffs — the findings
+  are unrefreshable, and keeping code excerpts for a repo the operator
+  deliberately unhooked runs against "minimize code retention".
+- Scans are purged *after* `repoStore.deleteRepo` returns true, so a failed
+  repo delete can never leave a repo connected with its history gone.
+**Verification**: 3 new `JobStore.deleteByRepo` cases; `npm test` 100 passed;
+backend `tsc --noEmit` and frontend `tsc -b` clean.
+**Open**: `handleDisconnect` in ConnectRepoPage still ignores a non-2xx
+response and drops the row from the list regardless — pre-existing, worth a fix.

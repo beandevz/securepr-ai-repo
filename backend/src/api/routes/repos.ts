@@ -67,12 +67,12 @@ router.post('/repos/:id/webhook', async (req: Request, res: Response) => {
 
 router.delete('/repos/:id', async (req: Request, res: Response) => {
   try {
-    const ok = await repoService.disconnectRepo(req.params.id);
-    if (!ok) {
+    const { found, deletedScans } = await repoService.disconnectRepo(req.params.id);
+    if (!found) {
       res.status(404).json({ detail: 'Repository not found' });
       return;
     }
-    res.json({ ok: true });
+    res.json({ ok: true, deleted_scans: deletedScans });
   } catch (err) {
     handleError(err, res);
   }

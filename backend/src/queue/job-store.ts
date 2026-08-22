@@ -275,6 +275,25 @@ export class JobStore {
     return changes;
   }
 
+  /**
+   * Delete every scan of one repository on one host. Called when a repo is
+   * disconnected: its scans reference a repo we no longer hold a token for,
+   * so leaving them behind strands findings the operator can no longer act on.
+   */
+  async deleteByRepo(
+    owner: string, repo: string, host: string = GITHUB_DOTCOM_HOST
+  ): Promise<number> {
+    await initDb();
+    const db = await getDb();
+    db.run(
+      'DELETE FROM jobs WHERE owner = ? AND repo = ? AND host = ?',
+      [owner, repo, host]
+    );
+    const changes = db.getRowsModified();
+    if (changes > 0) saveDb(db);
+    return changes;
+  }
+
   async delete(jobId: string): Promise<boolean> {
     await initDb();
     const db = await getDb();

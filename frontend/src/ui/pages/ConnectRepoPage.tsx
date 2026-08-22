@@ -51,7 +51,11 @@ export const ConnectRepoPage: React.FC = () => {
   };
 
   const handleDisconnect = async (id: string) => {
-    if (!confirm('Are you sure you want to disconnect this repository?')) return;
+    if (!confirm(
+      'Disconnect this repository?\n\n' +
+      'Its webhook, stored token, and every scan it produced are deleted. ' +
+      'This cannot be undone.'
+    )) return;
     try {
       await fetch(`${apiBaseUrl}/repos/${id}`, { method: 'DELETE' });
       setConnectedRepos(prev => prev.filter(repo => repo.id !== id));

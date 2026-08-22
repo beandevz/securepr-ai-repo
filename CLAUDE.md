@@ -94,14 +94,14 @@ Keep each update ≤ 25 lines.
 - `ingest-service.ts` - IngestService: validateGithubPayload, createCheckRunIfEnabled, createJob, enqueueJob
 - `rag-service.ts` - RAG retrieval wrapper (RagContext, RagStatus, getRagHealth)
 - `rag-query.ts` - buildRagQueries: retrieval queries from a diff's added lines
-- `repo-service.ts` - connectRepo, listRepos, configureWebhook, disconnectRepo (Connect Repository feature)
+- `repo-service.ts` - connectRepo, listRepos, configureWebhook, disconnectRepo (Connect Repository feature; disconnect also purges that repo's scans)
 - `diff-fetcher.ts` - DiffFetcher: fetchFiles with GitHub pagination
 - `prompts.ts` - SYSTEM_PROMPT, CHUNK_PROMPT_TEMPLATE (explicit finding JSON schema), formatChunkPrompt
 
 **Queue Management** (`src/queue/`):
 - `models.ts` - Job interface
 - `job-store.ts` - Persistent sql.js JobStore at `JOBS_DB_PATH` (create, setStatus, setResult,
-  setError, list, get, deleteAll, markPrClosed); `pr_state` column hides closed PRs
+  setError, list, get, deleteAll, deleteByRepo, markPrClosed); `pr_state` column hides closed PRs
 - `manager.ts` - InProcQueue (setInterval-based poll), ServiceBusQueue (placeholder)
 - `instance.ts` - Queue singleton factory (getQueueInstance)
 
@@ -124,7 +124,7 @@ Keep each update ≤ 25 lines.
 - `rag.ts` - POST /rag/ingest/text, /rag/ingest/files (PDF upload), /rag/search, /rag/ask;
   GET /rag/sources, /rag/stats; DELETE /rag/sources/:source
 - `github-status.ts` - GET /github/status/:owner/:repo/:sha
-- `repos.ts` - POST /repos (connect + auto-create webhook), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id
+- `repos.ts` - POST /repos (connect + auto-create webhook), GET /repos, POST /repos/:id/webhook, DELETE /repos/:id (removes webhook + token + all scans, returns `deleted_scans`)
 
 **Entry Point**: `src/main.ts` - Express app with CORS, raw body capture for HMAC, queue startup, graceful shutdown
 
