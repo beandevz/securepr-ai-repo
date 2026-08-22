@@ -69,7 +69,9 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
       return;
     }
 
-    // Get GitHub token: explicit header > stored token for this connected repo > global fallback
+    // Get GitHub token: explicit header (relay path) > stored token for this
+    // connected repo. There is no global fallback — every repo acts under its
+    // own credential so access stays scoped and findings stay attributable.
     let token = req.headers['x-securepr-github-token'] as string | undefined;
     if (!token) {
       const connectedRepo = await getRepoByOwnerName(owner, repoName, host);
@@ -77,9 +79,10 @@ router.post('/ingest/github-actions', async (req: Request, res: Response) => {
         token = decryptSecret(connectedRepo.encrypted_token);
       }
     }
-    token = token || settings.githubToken;
     if (!token) {
-      res.status(400).json({ detail: 'Missing GitHub token' });
+      res.status(400).json({
+        detail: `No GitHub token for ${owner}/${repoName} on ${host}. Connect the repository (POST /repos) or send X-SecurePR-Github-Token.`,
+      });
       return;
     }
 

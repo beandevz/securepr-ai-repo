@@ -703,7 +703,7 @@ router.post('/ingest/github-actions', async (req, res) => {
 
 ```bash
 curl -i -X POST "https://api.github.com/repos/$OWNER/$REPO/check-runs" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -d '{"name":"SecurePR AI","head_sha":"'"$HEAD_SHA"'","status":"in_progress"}'
@@ -715,7 +715,7 @@ curl -i -X POST "https://api.github.com/repos/$OWNER/$REPO/check-runs" \
   installation token, or set `STATUS_REPORTING_MODE=commit_status`, which uses
   the commit status API and works with a PAT. See
   [CHECK_RUN_STATUS.md](./CHECK_RUN_STATUS.md).
-- Check rate limits: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit`
+- Check rate limits: `curl -H "Authorization: Bearer $TOKEN" https://api.github.com/rate_limit`
 
 ---
 

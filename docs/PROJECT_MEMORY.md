@@ -286,3 +286,28 @@ GETTING_STARTED / SETUP_GITHUB / docker-compose (settings.ts never read them).
 `tsc -b` clean; no broken markdown links repo-wide.
 **Open**: no `LICENSE` file; `docs/DEPLOYMENT_COMPARISON.md` and
 `docs/REVIEW_BATCH.md` (3 lines) have no referrers and were left in place.
+
+### 2026-08-22: Removed the global GITHUB_TOKEN fallback
+**Current State**: Ingest now resolves a GitHub token from two sources only —
+`X-SecurePR-Github-Token` (relay path) > the per-repo encrypted token in
+`repos/store.ts`. `settings.githubToken` / the `GITHUB_TOKEN` env var are gone
+(`core/settings.ts`, `api/routes/ingest.ts`). A webhook for a repo that was
+never connected and carries no relay header gets `400 No GitHub token for
+<owner>/<repo> on <host>` instead of silently running under a shared PAT.
+**Decisions**:
+- One PAT spanning every repo conflicted with the "protect code data /
+  least privilege" constraint and made PR activity unattributable. Connect
+  Repository already stores an encrypted per-repo token, so the fallback was
+  the weakest link, not a needed path.
+- The webhook HMAC is still the global `SECUREPR_INGEST_SECRET`, so an
+  unconnected repo can pass signature checks — hence the explicit 400 naming
+  the repo and host rather than a bare "Missing GitHub token".
+**Docs updated**: `backend/.env.example`, `docker-compose.yml`, README,
+GETTING_STARTED (new "GitHub credentials" section), SETUP_GITHUB,
+GITHUB_TOKEN_SCOPES (resolution order + security notes), DEPLOYMENT_AWS
+(tfvars, ECS secrets, Secrets Manager, CI secrets), DEPLOYMENT_AZURE (app
+settings, Container Apps secrets). WEBHOOK_GUIDE's debug curls now use `$TOKEN`
+so the shell var is not mistaken for the removed setting.
+**Verification**: `npx tsc --noEmit` clean; `npm test` 97 passed.
+**Open**: connecting a repo is now mandatory for local dev — worth a smoke-test
+fixture that connects a repo before replaying a webhook.

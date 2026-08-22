@@ -73,7 +73,6 @@ Web App → **Settings → Configuration → Application settings**:
 |---|---|
 | `WEBSITES_PORT` | `80` |
 | `WEBSITES_ENABLE_APP_SERVICE_STORAGE` | `true` |
-| `GITHUB_TOKEN` | your GitHub token |
 | `SECUREPR_INGEST_SECRET` | your webhook secret |
 | `TOKEN_ENCRYPTION_KEY` | a random string (encrypts stored GitHub tokens) |
 | `RAG_DB_PATH` | `/home/data/rag.db` |
@@ -83,6 +82,9 @@ Web App → **Settings → Configuration → Application settings**:
 | `OPENAI_API_KEY` | your key (omit if no LLM) |
 | `OPENAI_BASE_URL` | your Azure OpenAI endpoint (omit for public OpenAI) |
 | `OPENAI_MODEL` | your deployment/model name |
+
+There is no `GITHUB_TOKEN` setting. Each repository supplies its own token
+through *Connect Repository*; it is stored encrypted under `TOKEN_ENCRYPTION_KEY`.
 
 **Both** storage settings are needed for data to survive. The container
 filesystem is rebuilt from the image on every restart, redeploy, scale or
@@ -222,8 +224,6 @@ properties:
     secrets:
       - name: openai-api-key
         value: "<your-openai-or-azure-openai-key>"
-      - name: github-token
-        value: "<your-github-token>"
       - name: ingest-secret
         value: "<your-webhook-secret>"
   template:
@@ -241,8 +241,6 @@ properties:
             value: "<your-azure-openai-endpoint-or-blank-for-public-openai>"
           - name: OPENAI_MODEL
             value: "<your-deployment-or-model-name>"
-          - name: GITHUB_TOKEN
-            secretRef: github-token
           - name: SECUREPR_INGEST_SECRET
             secretRef: ingest-secret
           - name: RAG_DB_PATH

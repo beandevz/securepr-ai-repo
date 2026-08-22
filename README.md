@@ -106,8 +106,7 @@ OPENAI_API_KEY=your-key
 OPENAI_MODEL=gpt-4o
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
-# GitHub
-GITHUB_TOKEN=ghp_your_token_here
+# GitHub (no global token — each repo supplies its own on Connect Repository)
 GITHUB_ALLOWED_HOSTS=github.com
 SECUREPR_INGEST_SECRET=change_me_to_random_string
 

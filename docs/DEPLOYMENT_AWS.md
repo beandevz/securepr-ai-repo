@@ -40,8 +40,7 @@ llm_provider        = "bedrock"  # or "openai"
 openai_api_key      = "sk-..."  # if using OpenAI
 bedrock_model_id    = "anthropic.claude-3-sonnet"  # if using Bedrock
 
-# GitHub
-github_token            = "ghp_your_token"
+# GitHub (no global token — repos are connected individually at runtime)
 securepr_ingest_secret  = "your-random-secret"
 
 # Scaling
@@ -182,10 +181,6 @@ aws ecs create-cluster \
         {
           "name": "OPENAI_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:securepr/openai-key"
-        },
-        {
-          "name": "GITHUB_TOKEN",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:securepr/github-token"
         }
       ],
       "logConfiguration": {
@@ -287,11 +282,6 @@ aws secretsmanager create-secret \
   --name securepr/openai-key \
   --secret-string "sk-your-key-here"
 
-# Store GitHub token
-aws secretsmanager create-secret \
-  --name securepr/github-token \
-  --secret-string "ghp_your-token-here"
-
 # Store webhook secret
 aws secretsmanager create-secret \
   --name securepr/ingest-secret \
@@ -368,8 +358,10 @@ Required GitHub Secrets:
 - `AWS_ACCESS_KEY_ID` - AWS access key
 - `AWS_SECRET_ACCESS_KEY` - AWS secret key
 - `OPENAI_API_KEY` - OpenAI API key
-- `GITHUB_TOKEN` - GitHub personal access token
 - `SECUREPR_INGEST_SECRET` - Webhook signature secret
+
+> There is no `GITHUB_TOKEN` setting. GitHub tokens are supplied per repository
+> through *Connect Repository* and stored encrypted under `TOKEN_ENCRYPTION_KEY`.
 
 ## 💰 Cost Optimization
 

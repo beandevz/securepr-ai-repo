@@ -5,7 +5,6 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 export interface Settings {
   securePrIngestSecret: string;
-  githubToken: string | undefined;
   githubAllowedHosts: string[];
 
   queueProvider: string;
@@ -60,7 +59,6 @@ function loadSettings(): Settings {
   const env = process.env;
   return {
     securePrIngestSecret: env.SECUREPR_INGEST_SECRET || 'change_me',
-    githubToken: env.GITHUB_TOKEN || undefined,
     githubAllowedHosts: parseHostList(
       env.GITHUB_ALLOWED_HOSTS || 'github.com,github.boschdevcloud.com'
     ),

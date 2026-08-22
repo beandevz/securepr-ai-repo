@@ -40,10 +40,17 @@ Which permissions to assign to the GitHub access token used by SecurePR AI.
 
 SecurePR AI resolves a token in this order:
 
-1. **Per-repo token** — supplied on *Connect Repository*, stored encrypted
+1. **Relay header** — `X-SecurePR-Github-Token`, for callers that forward their own
+   credential (`api/routes/ingest.ts:76`).
+2. **Per-repo token** — supplied on *Connect Repository*, stored encrypted
    (`services/repo-service.ts:82` → `encryptSecret`), decrypted at ingest time
-   (`api/routes/ingest.ts:68`).
-2. **Global fallback** — `GITHUB_TOKEN` from `.env` (`api/routes/ingest.ts:71`).
+   (`api/routes/ingest.ts:81`).
+
+There is **no global token**. `GITHUB_TOKEN` was removed so no single credential
+spans every repository: each repo acts under its own token, which keeps access
+scoped and keeps PR activity attributable. A webhook for a repo that was never
+connected — and that carries no relay header — is rejected with
+`400 No GitHub token for <owner>/<repo> on <host>`.
 
 The **same token** is used for both webhook management *and* all later PR
 publishing, so it needs the full permission set — not just read access.
@@ -121,13 +128,11 @@ Every GitHub endpoint this codebase calls, and what it needs:
    ```
 
 6. Set an expiry, generate, and copy the `github_pat_...` value.
-7. Use it in **either** place:
-   - Paste it into the **Connect Repository** page (stored encrypted per repo), **or**
-   - Put it in `backend/.env` as the global fallback:
-     ```bash
-     GITHUB_TOKEN=github_pat_xxxxxxxxxxxx
-     STATUS_REPORTING_MODE=commit_status
-     ```
+7. Paste it into the **Connect Repository** page (or `POST /repos`); it is stored
+   encrypted per repo. With a PAT, also set in `backend/.env`:
+   ```bash
+   STATUS_REPORTING_MODE=commit_status
+   ```
 
 ---
 
@@ -269,8 +274,10 @@ and then `createWebhook`, so a successful connect proves both Metadata and Webho
 - **Per-repo tokens are encrypted at rest** (`core/security.ts:encryptSecret`) using
   `TOKEN_ENCRYPTION_KEY`. Change it from the default `change_me` before any real
   deployment, and treat it as a secret — it decrypts every stored token.
-- **Never commit tokens.** `GITHUB_TOKEN` belongs in `.env` (git-ignored), not in
-  `.env.example`.
+- **Never commit tokens.** Tokens live only in the encrypted per-repo store — never in
+  `.env`, `.env.example`, or `docker-compose.yml`.
+- **No global credential.** There is deliberately no `GITHUB_TOKEN` env var; connect each
+  repository so a leaked or over-scoped token cannot reach repos you never onboarded.
 - **Rotate on expiry** and set the shortest practical lifetime; reconnect affected repos
   afterwards so the encrypted per-repo copy is refreshed.
 - **Prefer a GitHub App** for production: installation tokens are short-lived, scoped per

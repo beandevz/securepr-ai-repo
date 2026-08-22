@@ -83,15 +83,27 @@ Create `backend/.env` with:
 # Webhook Security
 SECUREPR_INGEST_SECRET=change_me_to_random_string
 
-# GitHub
-GITHUB_TOKEN=ghp_your_token_here
-
 # LLM (set to 'none' for development without Azure)
 LLM_PROVIDER=none
 
 # Queue
 QUEUE_PROVIDER=inproc
 ```
+
+### GitHub credentials
+
+There is no global `GITHUB_TOKEN`. Every repository supplies its own token when
+you connect it — via the Connect Repository page or `POST /repos` — and it is
+stored encrypted under `TOKEN_ENCRYPTION_KEY`. A webhook for a repo that was
+never connected is rejected with `400 No GitHub token for <owner>/<repo>`.
+
+```bash
+curl -X POST http://localhost:8000/repos \
+  -H 'Content-Type: application/json' \
+  -d '{"repoUrl":"https://github.com/owner/repo","githubToken":"ghp_..."}'
+```
+
+Required scopes are listed in [docs/GITHUB_TOKEN_SCOPES.md](docs/GITHUB_TOKEN_SCOPES.md).
 
 ### Optional - Enable the LLM analyzer
 
